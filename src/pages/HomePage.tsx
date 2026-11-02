@@ -1,16 +1,11 @@
 /** 首页：左侧设备侧栏，右侧电量 hero 卡。电量来自后端同一次采样，不自己再读 HID。 */
 import type { BatteryInfo } from '@/devices'
-import { invoke } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
 import { useEffect, useRef, useState } from 'react'
+import { commands, events } from '@/bindings'
 import { BatteryCard } from '@/components/BatteryCard'
 import { DeviceList } from '@/components/DeviceList'
 import { deviceRegistry, getDeviceById } from '@/devices'
 import { resolveSelectedByCategory, useSettingsStore } from '@/stores/settings'
-
-interface BatteryUpdate extends BatteryInfo {
-  deviceId: string
-}
 
 interface Sample {
   deviceId: string
@@ -49,7 +44,7 @@ export function HomePage() {
   useEffect(() => {
     let cancelled = false
     let unlisten: (() => void) | undefined
-    void listen<BatteryUpdate>('battery-updated', (event) => {
+    void events.batteryUpdated.listen((event) => {
       if (cancelled || event.payload.deviceId !== selectedIdRef.current) return
       const { deviceId, ...info } = event.payload
       setSample({ deviceId, info, at: new Date() })
@@ -125,10 +120,7 @@ export function HomePage() {
           setTrayDeviceId(id)
           setAutoRefresh(true)
           const next = useSettingsStore.getState().selectedByCategory
-          void invoke('set_tray_device', {
-            deviceId: id,
-            selectedByCategory: next,
-          }).catch((e: unknown) => {
+          void commands.setTrayDevice(id, next).catch((e: unknown) => {
             console.error('set_tray_device failed', e)
           })
         }}

@@ -9,6 +9,8 @@ export default antfu(
       "src-tauri/**",
       "dist/**",
       "src/routeTree.gen.ts",
+      // Specta writes this file. Do not lint generated bindings.
+      "src/bindings.ts",
       // Third-party Morph Bot runtime; keep it byte-for-byte with upstream.
       "src/vendor/**",
     ],

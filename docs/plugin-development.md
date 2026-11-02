@@ -25,7 +25,7 @@
 
 `manifest.json` 有四个字段：`id`、`name`、`description`、`category`。`category` 取 `mouse`、`keyboard`、`headset`，对应首页一级分类「鼠标 / 键盘 / 耳机」。前端 `import` 这个文件，Rust 用 `include_str!` 读同一个文件。不要在托盘、设置默认值或别的表里再写一份 id / 名称。不要恢复 `TRAY_DEVICES`，也不要在设置里写死 `vt9-air`。默认托盘设备是两张注册表的第一项，所以两张表的顺序要一致。
 
-电量只有一条壳层命令：`get_battery(device_id)`。前端是 `invoke('get_battery', { deviceId })`，`createDeviceAdapter` 已经这么调。不要再加无参、隐含只支持 VT9 的 `get_battery`。`list_devices` 返回 Rust 侧已注册的设备，用来对照 id。
+电量只有一条壳层命令：`get_battery(device_id)`。`createDeviceAdapter` 通过生成绑定 `commands.getBattery` 调用它（定义在 `src/bindings.ts`）。不要再加无参、隐含只支持 VT9 的 `get_battery`。`list_devices` 返回 Rust 侧已注册的设备，用来对照 id。
 
 现有五只：
 
@@ -45,7 +45,7 @@
 3. 在 `src/plugins/index.ts` 的 `deviceRegistry` 加一行 import。不要为了注册去改 `HomePage`。
 4. 在 `src-tauri/src/devices/` 加模块，文件名用下划线。`manifest_json` 用 `include_str!` 指向第 2 步那个 `manifest.json`。
 5. 在 `src-tauri/src/devices/mod.rs` 声明 `mod`，并在 `PLUGINS` 加一行。顺序与 `deviceRegistry` 相同。
-6. 命令不用新注册。`get_battery` 已经在 `generate_handler!` 里，按 `device_id` 分发。
+6. 命令不用新注册。`get_battery` 已经在 `collect_commands!` 里，按 `device_id` 分发。改了命令签名后跑 `pnpm bindings`，提交生成的 `src/bindings.ts`。
 7. 注意 `devices/mod.rs` 的单元测试断言了 `PLUGINS` 前几项的顺序和分类。**新增设备后这条测试会红，必须同步改**，否则 `cargo test --lib` 过不了。
 
 ### HID 通道的三种形态（选错会白干）
@@ -101,6 +101,8 @@ pnpm run check:card
 ```powershell
 cargo test --lib
 ```
+
+改了命令或事件的类型后，再跑 `pnpm bindings`，把 `src/bindings.ts` 一起提交。
 
 在 `src-tauri` 目录执行。解析器要有单元测试，不要只靠插上鼠标才知道包格式对不对。
 

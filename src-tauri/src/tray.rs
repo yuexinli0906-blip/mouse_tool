@@ -86,7 +86,7 @@ fn commit_tray_device(app: &AppHandle, device_id: String, selected: SelectedByCa
 }
 
 /// 每个分类至多一只。与前端 `SelectedByCategory` 同一份字段。
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, specta::Type)]
 pub struct SelectedByCategory {
     #[serde(default)]
     mouse: Option<String>,
@@ -127,6 +127,7 @@ fn read_selected_by_category(app: &AppHandle) -> SelectedByCategory {
 /// 主窗口选中设备时调用：记下该分类的选中项，并让托盘图标跟着这只。
 /// 电量由 settings 监听触发的同一次采样更新，这里不再单独读 HID。
 #[tauri::command]
+#[specta::specta]
 pub fn set_tray_device(
     app: AppHandle,
     device_id: String,

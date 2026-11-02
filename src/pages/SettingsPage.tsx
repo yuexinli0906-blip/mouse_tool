@@ -1,14 +1,15 @@
 /** 设置页：外观、刷新间隔、关窗是否进托盘、关于。 */
+import type { AutostartDiagnostic } from '@/bindings'
 import type { DeviceCategory } from '@/devices'
 import type { CloseBehavior, ThemeMode } from '@/stores/settings'
 import { Icon } from '@iconify/react'
 import { useNavigate } from '@tanstack/react-router'
-import { invoke } from '@tauri-apps/api/core'
 import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { check } from '@tauri-apps/plugin-updater'
 import { useEffect, useState } from 'react'
+import { commands } from '@/bindings'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -19,14 +20,6 @@ import { DEVICE_CATEGORIES, DEVICE_CATEGORY_LABEL } from '@/plugin-sdk'
 import { applyThemeFromStore, normalizeTrayCategories, useSettingsStore } from '@/stores/settings'
 
 type SectionId = 'appearance' | 'about'
-
-interface AutostartDiagnostic {
-  currentExe: string
-  registryValue: string | null
-  registryExe: string | null
-  pathsMatch: boolean
-  systemEnabled: boolean
-}
 
 const SECTIONS: { id: SectionId; label: string }[] = [
   { id: 'appearance', label: '外观' },
@@ -147,10 +140,7 @@ export function SettingsPage() {
                 reset()
                 applyThemeFromStore()
                 const next = useSettingsStore.getState()
-                void invoke('set_tray_device', {
-                  deviceId: next.trayDeviceId,
-                  selectedByCategory: next.selectedByCategory,
-                }).catch((e: unknown) => {
+                void commands.setTrayDevice(next.trayDeviceId, next.selectedByCategory).catch((e: unknown) => {
                   console.error('set_tray_device failed', e)
                 })
               })()
@@ -198,7 +188,7 @@ function AppearancePanel({
   async function loadAutostartDiag() {
     if (import.meta.env.DEV) return
     try {
-      const d = await invoke<AutostartDiagnostic>('get_autostart_diagnostic')
+      const d = await commands.getAutostartDiagnostic()
       setAutostartDiag(d)
     } catch {
       setAutostartDiag(null)
@@ -393,7 +383,7 @@ function AboutPanel() {
   }
 
   useEffect(() => {
-    void invoke<string>('get_log_path')
+    void commands.getLogPath()
       .then(setLogPath)
       .catch(() => setLogPath(''))
   }, [])
@@ -420,7 +410,7 @@ function AboutPanel() {
           disabled={!logPath}
           onClick={() => {
             if (!logPath) return
-            void invoke('open_log_dir').catch((e) => {
+            void commands.openLogDir().catch((e) => {
               console.error('open_log_dir failed', e)
             })
           }}

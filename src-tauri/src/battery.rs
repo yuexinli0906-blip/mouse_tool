@@ -4,13 +4,13 @@ use crate::app_log;
 use crate::devices;
 use crate::plugin_sdk::BatteryInfo;
 use crate::tray;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 
 /// 一次正在进行或刚结束的 HID 读取。
 /// `seq` 用来分清「等的是这一次」和「锁里已经被下一次读取换掉」。
@@ -230,9 +230,11 @@ pub(crate) fn read_shared(app: &AppHandle, device_id: &str, fresh: bool) -> Batt
     info
 }
 
-#[derive(Clone, Serialize)]
+/// 首页订阅的电量推送。事件名是 `battery-updated`。
+#[derive(Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
 #[serde(rename_all = "camelCase")]
-struct BatteryUpdated {
+#[tauri_specta(event_name = "battery-updated")]
+pub struct BatteryUpdated {
     device_id: String,
     percent: Option<u8>,
     charging: Option<bool>,
@@ -250,7 +252,7 @@ fn emit_battery(app: &AppHandle, device_id: &str, info: &BatteryInfo) {
         device: info.device.clone(),
         detail: info.detail.clone(),
     };
-    if let Err(err) = app.emit("battery-updated", payload) {
+    if let Err(err) = tauri_specta::Event::emit(&payload, app) {
         app_log::warn(&format!("battery event emit failed: {err}"));
     }
 }
@@ -371,6 +373,7 @@ pub fn spawn(app: AppHandle) {
 
 /// 壳层命令。`fresh` 为真时绕过缓存再读一次；省略时返回当前这次采样。
 #[tauri::command]
+#[specta::specta]
 pub async fn get_battery(app: AppHandle, device_id: String, fresh: Option<bool>) -> BatteryInfo {
     let fresh = fresh.unwrap_or(false);
     let label = devices::device_name(&device_id);

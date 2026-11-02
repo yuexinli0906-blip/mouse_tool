@@ -58,6 +58,7 @@ pub fn read_battery(device_id: &str) -> BatteryInfo {
 
 /// 壳层命令：返回已注册设备。元数据与前端 manifest 同源。
 #[tauri::command]
+#[specta::specta]
 pub fn list_devices() -> Vec<DeviceMeta> {
     list_meta()
 }

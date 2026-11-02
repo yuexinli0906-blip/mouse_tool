@@ -42,6 +42,12 @@ pnpm dev:app
 pnpm dev
 ```
 
+壳层命令和 `battery-updated` 事件的 TypeScript 绑定在 `src/bindings.ts`（Specta / tauri-specta，不要手改）。改了 Rust 命令、事件或它们的参数/返回类型后重新生成并提交：
+
+```powershell
+pnpm bindings
+```
+
 ## 📦 下载安装
 
 前往 [GitHub Releases](https://github.com/wjyugutou/mouse_tool/releases) 下载 Windows 安装包。
@@ -97,7 +103,7 @@ pnpm build:app
 - 前端：`src/plugins/<id>/`（含 `manifest.json`）
 - 后端：`src-tauri/src/devices/<id>.rs`，并在 `PLUGINS` 注册表追加一行
 
-窗口、设置、托盘、日志、自动更新留在壳层。命令在 `generate_handler!` 里静态注册，不加载 DLL。电量只有一条壳层命令：`get_battery(device_id)`；`device_id` 与前端适配器的 `id` 来自同一份 `manifest.json`。
+窗口、设置、托盘、日志、自动更新留在壳层。命令在 `collect_commands!` 里静态注册，不加载 DLL。电量只有一条壳层命令：`get_battery(device_id)`；前端通过 `commands.getBattery` 调用。`device_id` 与前端适配器的 `id` 来自同一份 `manifest.json`。
 
 新增设备时，无需重写主窗口、设置页、托盘和自动更新等核心功能。详细说明请参阅 [设备插件开发指南](docs/plugin-development.md)。
 
