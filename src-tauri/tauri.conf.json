@@ -1,6 +1,6 @@
 {
   "productName": "yugutou_tool",
-  "version": "3.4.0",
+  "version": "3.5.0",
   "identifier": "com.wwwj.mousetool",
   "build": {
     "beforeDevCommand": "pnpm dev",
