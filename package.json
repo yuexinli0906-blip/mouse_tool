@@ -17,7 +17,8 @@
     "build:app": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/tauri-build.ps1",
     "tauri:build": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/tauri-build.ps1",
     "release:bump": "node scripts/bump-version.mjs",
-    "update:dep": "taze major -w && cargo update --manifest-path src-tauri/Cargo.toml"
+    "update:dep": "taze major -w && cargo update --manifest-path src-tauri/Cargo.toml",
+    "release:notes": "node scripts/gen-release-notes.mjs"
   },
   "dependencies": {
     "@iconify/react": "^6.0.2",
