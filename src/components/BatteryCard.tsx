@@ -386,20 +386,25 @@ export function BatteryCard({
           <Stat label="最后刷新" value={formatClock(lastUpdated)} />
         </div>
 
-        <details className="group border-border/60 bg-background/30 mt-4 rounded-xl border px-4 py-3">
-          <summary className="text-muted-foreground flex cursor-pointer list-none items-center justify-between text-xs select-none [&::-webkit-details-marker]:hidden">
-            诊断详情
-            <Icon
-              icon="mdi:chevron-down"
-              className="size-4 transition-transform group-open:rotate-180"
-            />
-          </summary>
-          <div className="text-muted-foreground mt-3 space-y-2 text-[11px] leading-relaxed">
-            <p className="break-all">{info?.device || '—'}</p>
-            <p className="whitespace-pre-wrap break-all">{info?.detail || error || '—'}</p>
-          </div>
-        </details>
       </div>
     </section>
+  )
+}
+
+export function BatteryDiagnostics({ info, error }: { info: BatteryInfo | null, error: string | null }) {
+  return (
+    <details className="group border-border/60 bg-background/30 mt-4 rounded-xl border px-4 py-3">
+      <summary className="text-muted-foreground flex cursor-pointer list-none items-center justify-between text-xs select-none [&::-webkit-details-marker]:hidden">
+        诊断详情
+        <Icon
+          icon="mdi:chevron-down"
+          className="size-4 transition-transform group-open:rotate-180"
+        />
+      </summary>
+      <div className="text-muted-foreground mt-3 space-y-2 text-[11px] leading-relaxed">
+        <p className="break-all">{info?.device || '—'}</p>
+        <p className="whitespace-pre-wrap break-all">{info?.detail || error || '—'}</p>
+      </div>
+    </details>
   )
 }

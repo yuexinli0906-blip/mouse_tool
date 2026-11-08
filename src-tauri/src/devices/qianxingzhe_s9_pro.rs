@@ -38,7 +38,7 @@
 //!
 //! ## 安全约束
 //!
-//! - 只发 `0x4F/0x81` 这一条**只读查询**命令，绝不发任何 `SET_*` 写配置命令
+//! - 电量路径只查询；设置命令仅显式点击触发，读原值后最小写入并读回验证
 //! - 最多重试有限次，不循环轰炸
 //! - `get_input_report` 对任何设备都不许用（项目硬规则）
 
@@ -194,7 +194,9 @@ fn parse_reply(resp: &[u8]) -> Result<Option<Reading>, String> {
 
     // 帧校验通过了，说明设备确实在应答，只是这个值不是电量。
     // 报「已连接但电量未知」，不能报成断连。
-    Err(format!("电量字段 {raw} 既不在 0–100 也不是充电哨兵值，无法判定"))
+    Err(format!(
+        "电量字段 {raw} 既不在 0–100 也不是充电哨兵值，无法判定"
+    ))
 }
 
 /// 解析结果。
@@ -221,14 +223,11 @@ enum ModelGuess {
 fn guess_model(pid: u16) -> ModelGuess {
     if pid == S9_PRO_WIRED_PID {
         ModelGuess::Confirmed
-    }
-    else if OTHER_MODEL_WIRED_PIDS.contains(&pid) {
+    } else if OTHER_MODEL_WIRED_PIDS.contains(&pid) {
         ModelGuess::OtherModel(pid)
-    }
-    else if SHARED_RECEIVER_PIDS.contains(&pid) {
+    } else if SHARED_RECEIVER_PIDS.contains(&pid) {
         ModelGuess::SharedReceiver
-    }
-    else {
+    } else {
         // 不是 S9 系列。正常情况下枚举阶段就用 PRODUCT_IDS 过滤掉了，
         // 这里是兜底：万一将来 PRODUCT_IDS 被误加，也不会被当成 S9 蒙混过去。
         ModelGuess::NotS9Series(pid)
@@ -451,7 +450,10 @@ mod tests {
         assert_eq!(frame[6], CMD_BASIC_INFO_PARAM);
 
         let sum = frame[2..].iter().fold(0u8, |acc, b| acc.wrapping_add(*b));
-        assert_eq!(frame[1], sum, "payload[0] 必须是 payload[1..] 的和取低 8 位");
+        assert_eq!(
+            frame[1], sum,
+            "payload[0] 必须是 payload[1..] 的和取低 8 位"
+        );
 
         // 实机发出的前 8 字节是 `03 22 50 00 02 4F 81 00`，crc = 0x22
         assert_eq!(frame[1], 0x22, "实测 crc 是 0x22");
@@ -596,5 +598,242 @@ mod tests {
     fn measured_receiver_pid_is_recognised() {
         assert!(PRODUCT_IDS.contains(&0x103D));
         assert_eq!(guess_model(0x103D), ModelGuess::SharedReceiver);
+    }
+}
+
+// 设置协议来源：shan.ipigame.cn/app-Cn5AWPhI.js，wa/ul 控制器。
+// 只切现有档位，保留所有 DPI 原始编码和颜色；不提供恢复出厂/批量写入。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct S9Settings {
+    dpi_stages: Vec<u32>,
+    active_stage: usize,
+    polling_rate: u32,
+    supported_polling_rates: Vec<u32>,
+}
+struct SettingsSnapshot {
+    public: S9Settings,
+    profile: u8,
+    raw_dpi: Vec<u8>,
+    colors: Vec<u8>,
+    rate_byte: u8,
+}
+fn settings_exchange(device: &HidDevice, bytes: &[u8], min_len: usize) -> Result<Vec<u8>, String> {
+    let mut frame = [0u8; FRAME_LEN];
+    frame[0] = REPORT_ID;
+    frame[1..1 + bytes.len()].copy_from_slice(bytes);
+    frame[1] = frame[2..].iter().fold(0u8, |a, b| a.wrapping_add(*b));
+    device
+        .send_feature_report(&frame)
+        .map_err(|e| format!("发送设置报文失败: {e}"))?;
+    for _ in 0..READ_ATTEMPTS {
+        thread::sleep(READ_GAP);
+        let mut reply = [0u8; FRAME_LEN];
+        reply[0] = REPORT_ID;
+        let len = device
+            .get_feature_report(&mut reply)
+            .map_err(|e| format!("读取设置失败: {e}"))?;
+        // 回包不含 checksum，0x50 是 frame[1]；第 3 字节（去 Report ID 后）回显序号。
+        if len >= min_len
+            && reply[0] == REPORT_ID
+            && reply[1] == FRAME_MARKER
+            && reply[4] == bytes[3]
+        {
+            return Ok(reply[1..len].to_vec());
+        }
+    }
+    Err("鼠标未返回完整设置；请唤醒鼠标并关闭官方驱动后重试".into())
+}
+fn open_settings_device() -> Result<(HidDevice, bool), String> {
+    let api = HidApi::new().map_err(|e| e.to_string())?;
+    let candidates: Vec<_> = api
+        .device_list()
+        .filter(|d| {
+            d.vendor_id() == VENDOR_ID
+                && (d.product_id() == S9_PRO_WIRED_PID
+                    || SHARED_RECEIVER_PIDS.contains(&d.product_id()))
+                && d.usage_page() == VENDOR_USAGE_PAGE
+        })
+        .collect();
+    if candidates.len() != 1 {
+        return Err("需要且只能连接一只 S9 Pro 厂商接口（其它型号不支持设置）".into());
+    }
+    let info = candidates[0];
+    Ok((
+        api.open_path(info.path()).map_err(|e| e.to_string())?,
+        SHARED_RECEIVER_PIDS.contains(&info.product_id()),
+    ))
+}
+fn read_settings_snapshot(device: &HidDevice, wireless: bool) -> Result<SettingsSnapshot, String> {
+    let sensor = settings_exchange(device, &[0, 80, 0, 10, 79, 64], 16)?;
+    let profile = sensor[7];
+    let count = (profile & 15) as usize;
+    let active = (profile >> 4) as usize;
+    if count == 0 || count > 8 || active == 0 || active > count {
+        return Err("DPI 档位信息无效，拒绝写入".into());
+    }
+    let mut config = Vec::new();
+    for page in 0..6u8 {
+        let reply = settings_exchange(device, &[0, 80, 0, 0, 79, 65 + page], 16)?;
+        if reply[4] != page + 1 {
+            return Err("DPI 分页回包不匹配，拒绝使用旧数据".into());
+        }
+        config.extend_from_slice(&reply[if page == 0 { 6 } else { 5 }..15]);
+    }
+    let dpi_stages = config[..count * 2]
+        .chunks_exact(2)
+        .map(|b| {
+            let raw = u16::from_le_bytes([b[0], b[1]]) as u32;
+            if raw >= 30000 {
+                raw
+            } else {
+                (raw + 1) * 50
+            }
+        })
+        .collect();
+    let rate_byte = sensor[6];
+    let code = if wireless {
+        rate_byte & 7
+    } else {
+        (rate_byte >> 4) & 7
+    };
+    let polling_rate = match code {
+        0 => 1000,
+        1 => 500,
+        2 => 250,
+        3 => 125,
+        4 => 8000,
+        5 => 4000,
+        6 => 2000,
+        _ => return Err("未知回报率编码".into()),
+    };
+    Ok(SettingsSnapshot {
+        public: S9Settings {
+            dpi_stages,
+            active_stage: active - 1,
+            polling_rate,
+            supported_polling_rates: vec![125, 250, 500, 1000],
+        },
+        profile,
+        raw_dpi: config[..16].to_vec(),
+        colors: config[16..40].to_vec(),
+        rate_byte,
+    })
+}
+#[tauri::command]
+pub async fn get_s9_settings() -> Result<S9Settings, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let _guard = READ_LOCK.lock().map_err(|_| "设备锁失效")?;
+        let (device, wireless) = open_settings_device()?;
+        Ok(read_settings_snapshot(&device, wireless)?.public)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn set_s9_settings(
+    active_stage: Option<usize>,
+    polling_rate: Option<u32>,
+) -> Result<S9Settings, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if active_stage.is_some() == polling_rate.is_some() {
+            return Err("每次只能修改一个设置".into());
+        }
+        let _guard = READ_LOCK.lock().map_err(|_| "设备锁失效")?;
+        let (device, wireless) = open_settings_device()?;
+        let before = read_settings_snapshot(&device, wireless)?;
+        let mut command = if let Some(stage) = active_stage {
+            if stage >= before.public.dpi_stages.len() {
+                return Err("DPI 档位越界".into());
+            }
+            vec![
+                0,
+                80,
+                6,
+                80,
+                58,
+                0,
+                (((stage + 1) as u8) << 4) | (before.profile & 15),
+                before.raw_dpi[stage * 2],
+                before.raw_dpi[stage * 2 + 1],
+                before.colors[stage * 3],
+                before.colors[stage * 3 + 1],
+                before.colors[stage * 3 + 2],
+            ]
+        } else {
+            let code = match polling_rate.unwrap() {
+                1000 => 0,
+                500 => 1,
+                250 => 2,
+                125 => 3,
+                _ => return Err("仅支持 125/250/500/1000 Hz".into()),
+            };
+            // 仅修改当前连接对应的半字节，不覆盖另一个连接方式的配置。
+            let rate = if wireless {
+                (before.rate_byte & 0xf0) | code
+            } else {
+                (before.rate_byte & 0x0f) | (code << 4)
+            };
+            vec![0, 80, 1, 49, 53, 1, rate]
+        };
+        command[0] = 0;
+        settings_exchange(&device, &command, 6)?;
+        // 实机：切回报率后无线链路短暂重配，立即读会只收到状态桩。
+        if polling_rate.is_some() {
+            thread::sleep(Duration::from_millis(1000));
+        }
+        let after = read_settings_snapshot(&device, wireless)?;
+        if after.raw_dpi != before.raw_dpi
+            || after.colors != before.colors
+            || after.public.dpi_stages.len() != before.public.dpi_stages.len()
+            || active_stage.is_some_and(|s| {
+                after.public.active_stage != s
+                    || after.public.polling_rate != before.public.polling_rate
+            })
+            || polling_rate.is_some_and(|r| {
+                after.public.polling_rate != r
+                    || after.public.active_stage != before.public.active_stage
+            })
+        {
+            return Err("写入后的读回校验不一致，停止操作，请重新读取设置".into());
+        }
+        Ok(after.public)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[cfg(test)]
+mod settings_hardware_tests {
+    #[test]
+    #[ignore = "需要 S9 Pro 实机；切换后恢复原始档位和回报率"]
+    fn settings_roundtrip_and_restore() {
+        tauri::async_runtime::block_on(async {
+            let original = super::get_s9_settings().await.unwrap();
+            println!("原始设置: {:?}", original);
+            let stage = (original.active_stage + 1) % original.dpi_stages.len();
+            let rate = if original.polling_rate == 500 {
+                1000
+            } else {
+                500
+            };
+            let result = async {
+                let dpi = super::set_s9_settings(Some(stage), None).await?;
+                assert_eq!(dpi.active_stage, stage);
+                let polling = super::set_s9_settings(None, Some(rate)).await?;
+                assert_eq!(polling.polling_rate, rate);
+                Ok::<(), String>(())
+            }
+            .await;
+            let restore_dpi = super::set_s9_settings(Some(original.active_stage), None).await;
+            let restore_rate = super::set_s9_settings(None, Some(original.polling_rate)).await;
+            assert!(restore_dpi.is_ok(), "恢复 DPI 失败: {restore_dpi:?}");
+            let restored = restore_rate.expect("恢复回报率失败");
+            assert_eq!(restored.active_stage, original.active_stage);
+            assert_eq!(restored.polling_rate, original.polling_rate);
+            assert_eq!(restored.dpi_stages, original.dpi_stages);
+            result.expect("实机切换验证失败，原设置已恢复");
+            println!("生产命令 DPI/回报率切换和恢复通过");
+        });
     }
 }

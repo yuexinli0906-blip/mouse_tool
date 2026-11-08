@@ -4,7 +4,7 @@
 //! 托盘和 `get_battery` 都读这张表，不要再维护第二份设备列表。
 
 mod mchose_a5_v3_ultra;
-mod qianxingzhe_s9_pro;
+pub(crate) mod qianxingzhe_s9_pro;
 mod razer_viper_ultimate;
 mod vgn_s99;
 mod vt9_air;

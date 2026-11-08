@@ -132,6 +132,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_battery,
             list_devices,
+            devices::qianxingzhe_s9_pro::get_s9_settings,
+            devices::qianxingzhe_s9_pro::set_s9_settings,
             get_log_path,
             open_log_dir,
             set_tray_device,

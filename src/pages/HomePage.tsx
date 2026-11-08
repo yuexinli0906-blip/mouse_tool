@@ -1,10 +1,11 @@
 /** 首页：左侧设备侧栏，右侧电量 hero 卡。电量来自后端同一次采样，不自己再读 HID。 */
-import type { BatteryInfo } from '@/devices'
+import type { BatteryInfo, DeviceCategory } from '@/devices'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BatteryCard } from '@/components/BatteryCard'
+import { BatteryCard, BatteryDiagnostics } from '@/components/BatteryCard'
 import { DeviceList } from '@/components/DeviceList'
+import { S9Settings } from '@/components/S9Settings'
 import {
   deviceRegistry,
   getDeviceById,
@@ -37,6 +38,10 @@ export function HomePage() {
     [selected, storedSelection],
   )
   const [sample, setSample] = useState<Sample | null>(null)
+  const [browsingCategory, setBrowsingCategory] = useState<DeviceCategory | null>(null)
+  const categoryRequestRef = useRef(0)
+  const visibleCategory = browsingCategory ?? selected.category
+  const categoryDevices = deviceRegistry.filter(device => device.category === visibleCategory)
   const [error, setError] = useState<{ deviceId: string, message: string } | null>(null)
   const [refreshingId, setRefreshingId] = useState<string | null>(null)
   // 样本带着读它时的设备 id。换设备后对不上就先空白，避免上一只的电量留在卡片上。
@@ -118,23 +123,49 @@ export function HomePage() {
     }
   }, [applySample, selected, trayDeviceId])
 
+  const selectDevice = (id: string) => {
+    categoryRequestRef.current += 1
+    setBrowsingCategory(null)
+    setTrayDeviceId(id)
+    setAutoRefresh(true)
+    void invoke('set_tray_device', {
+      deviceId: id,
+      selectedByCategory: useSettingsStore.getState().selectedByCategory,
+    }).catch((e: unknown) => console.error('set_tray_device failed', e))
+  }
+
+  const selectCategory = async (category: DeviceCategory) => {
+    const request = ++categoryRequestRef.current
+    setBrowsingCategory(category)
+    const devices = deviceRegistry.filter(device => device.category === category)
+    // 按注册顺序逐个查询，避免同时打开多个 HID；晚到的旧分类结果不得覆盖新选择。
+    for (const device of devices) {
+      try {
+        const info = await device.readBattery()
+        if (request !== categoryRequestRef.current)
+          return
+        if (info.connected && !info.unsupported) {
+          selectDevice(device.id)
+          applySample(device.id, info)
+          return
+        }
+      }
+      catch { /* 单个设备读取失败时继续找同分类的下一台。 */ }
+      if (request !== categoryRequestRef.current)
+        return
+    }
+    if (request === categoryRequestRef.current && devices[0])
+      selectDevice(devices[0].id)
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col md:flex-row">
       <DeviceList
         devices={deviceRegistry}
         activeId={selected.id}
         selectedByCategory={selectedByCategory}
-        onSelect={(id) => {
-          setTrayDeviceId(id)
-          setAutoRefresh(true)
-          const next = useSettingsStore.getState().selectedByCategory
-          void invoke('set_tray_device', {
-            deviceId: id,
-            selectedByCategory: next,
-          }).catch((e: unknown) => {
-            console.error('set_tray_device failed', e)
-          })
-        }}
+        onSelect={selectDevice}
+        onCategoryChange={category => void selectCategory(category)}
         auto={autoRefresh}
         autoIntervalSec={autoIntervalSec}
       />
@@ -142,26 +173,30 @@ export function HomePage() {
       <main className="relative min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
         <div className="bg-primary/10 pointer-events-none absolute -top-40 right-[-12%] size-130 rounded-full blur-[120px]" />
         <div className="relative mx-auto flex min-h-full w-full max-w-215 flex-col justify-start px-5 py-6 lg:justify-center lg:px-10 lg:py-8">
-          {selected
-            ? (
-                <BatteryCard
-                  deviceName={selected.name}
-                  info={matching?.info ?? null}
-                  loading={loading}
-                  auto={autoRefresh}
-                  autoIntervalSec={autoIntervalSec}
-                  error={visibleError}
-                  lastUpdated={matching?.at ?? null}
-                  onRefresh={refresh}
-                  onStartRefresh={() => setAutoRefresh(true)}
-                  onStopRefresh={() => setAutoRefresh(false)}
-                />
-              )
-            : (
-                <div className="flex flex-1 items-center justify-center">
-                  <p className="text-muted-foreground">尚未注册任何设备</p>
-                </div>
-              )}
+          {browsingCategory !== null
+            ? <p className="text-muted-foreground py-12 text-center">{categoryDevices.length ? '正在查找已连接设备…' : '此分类暂无设备'}</p>
+            : selected
+              ? (
+                  <BatteryCard
+                    deviceName={selected.name}
+                    info={matching?.info ?? null}
+                    loading={loading}
+                    auto={autoRefresh}
+                    autoIntervalSec={autoIntervalSec}
+                    error={visibleError}
+                    lastUpdated={matching?.at ?? null}
+                    onRefresh={refresh}
+                    onStartRefresh={() => setAutoRefresh(true)}
+                    onStopRefresh={() => setAutoRefresh(false)}
+                  />
+                )
+              : (
+                  <div className="flex flex-1 items-center justify-center">
+                    <p className="text-muted-foreground">尚未注册任何设备</p>
+                  </div>
+                )}
+          {browsingCategory === null && selected.id === 'qianxingzhe-s9-pro' && <S9Settings key={selected.id} />}
+          {browsingCategory === null && <BatteryDiagnostics info={matching?.info ?? null} error={visibleError} />}
         </div>
       </main>
     </div>

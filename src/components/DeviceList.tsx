@@ -19,6 +19,7 @@ interface Props {
   /** 各分类里选中的那一只，用来画高亮 */
   selectedByCategory: Record<DeviceCategory, string | null>
   onSelect: (id: string) => void
+  onCategoryChange: (category: DeviceCategory) => void
   auto: boolean
   autoIntervalSec: number
 }
@@ -28,6 +29,7 @@ export function DeviceList({
   activeId,
   selectedByCategory,
   onSelect,
+  onCategoryChange,
   auto,
   autoIntervalSec,
 }: Props) {
@@ -73,7 +75,10 @@ export function DeviceList({
                 type="button"
                 role="tab"
                 aria-selected={active}
-                onClick={() => setCategory(id)}
+                onClick={() => {
+                  setCategory(id)
+                  onCategoryChange(id)
+                }}
                 className={cn(
                   'flex items-center justify-center gap-1.5 rounded-lg px-1.5 py-1.5 text-[11px] font-medium transition-all',
                   active
