@@ -1,8 +1,7 @@
 /** 首页：左侧设备侧栏，右侧电量 hero 卡。电量来自后端同一次采样，不自己再读 HID。 */
 import type { BatteryInfo, DeviceCategory } from '@/devices'
-import { invoke } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { commands, events } from '@/bindings'
 import { BatteryCard, BatteryDiagnostics } from '@/components/BatteryCard'
 import { DeviceList } from '@/components/DeviceList'
 import { S9Settings } from '@/components/S9Settings'
@@ -12,10 +11,6 @@ import {
 } from '@/devices'
 import { resolveSelectedByCategory, useSettingsStore } from '@/stores/settings'
 
-interface BatteryUpdate extends BatteryInfo {
-  deviceId: string
-}
-
 interface Sample {
   deviceId: string
   info: BatteryInfo
@@ -23,20 +18,14 @@ interface Sample {
 }
 
 export function HomePage() {
-  const autoIntervalSec = useSettingsStore(s => s.autoIntervalSec)
-  const autoRefresh = useSettingsStore(s => s.autoRefresh)
-  const trayDeviceId = useSettingsStore(s => s.trayDeviceId)
-  const storedSelection = useSettingsStore(s => s.selectedByCategory)
-  const setTrayDeviceId = useSettingsStore(s => s.setTrayDeviceId)
-  const setAutoRefresh = useSettingsStore(s => s.setAutoRefresh)
-  const selected = useMemo(
-    () => getDeviceById(trayDeviceId) ?? deviceRegistry[0],
-    [trayDeviceId],
-  )
-  const selectedByCategory = useMemo(
-    () => resolveSelectedByCategory(selected?.id ?? '', storedSelection),
-    [selected, storedSelection],
-  )
+  const autoIntervalSec = useSettingsStore((s) => s.autoIntervalSec)
+  const autoRefresh = useSettingsStore((s) => s.autoRefresh)
+  const trayDeviceId = useSettingsStore((s) => s.trayDeviceId)
+  const storedSelection = useSettingsStore((s) => s.selectedByCategory)
+  const setTrayDeviceId = useSettingsStore((s) => s.setTrayDeviceId)
+  const setAutoRefresh = useSettingsStore((s) => s.setAutoRefresh)
+  const selected = getDeviceById(trayDeviceId) ?? deviceRegistry[0]
+  const selectedByCategory = resolveSelectedByCategory(selected?.id ?? '', storedSelection)
   const [sample, setSample] = useState<Sample | null>(null)
   const [browsingCategory, setBrowsingCategory] = useState<DeviceCategory | null>(null)
   const categoryRequestRef = useRef(0)
@@ -49,89 +38,92 @@ export function HomePage() {
   const visibleError = error?.deviceId === selected?.id ? error.message : null
   const loading = refreshingId === selected?.id || (matching == null && visibleError == null)
 
-  const applySample = useCallback((deviceId: string, info: BatteryInfo) => {
+  function applySample(deviceId: string, info: BatteryInfo) {
     setSample({ deviceId, info, at: new Date() })
-    setError(current => current?.deviceId === deviceId ? null : current)
-  }, [])
+    setError((current) => (current?.deviceId === deviceId ? null : current))
+  }
   // 渲染时更新。点击换设备会先改 store 再重渲染，事件回来时这里已经是新 id。
   // 监听不跟着设备重订，否则退订到重订的空隙里事件会丢，卡片就要空等到下一轮间隔。
   const selectedIdRef = useRef(selected?.id)
-  selectedIdRef.current = selected?.id
+  useEffect(() => {
+    selectedIdRef.current = selected?.id
+  })
 
   useEffect(() => {
     let cancelled = false
     let unlisten: (() => void) | undefined
-    void listen<BatteryUpdate>('battery-updated', (event) => {
-      if (cancelled || event.payload.deviceId !== selectedIdRef.current)
-        return
+    void events.batteryUpdated.listen((event) => {
+      if (cancelled || event.payload.deviceId !== selectedIdRef.current) return
       const { deviceId, ...info } = event.payload
-      applySample(deviceId, info)
+      setSample({ deviceId, info, at: new Date() })
+      setError((current) => (current?.deviceId === deviceId ? null : current))
     }).then((stop) => {
-      if (cancelled)
-        stop()
-      else
-        unlisten = stop
+      if (cancelled) stop()
+      else unlisten = stop
     })
     return () => {
       cancelled = true
       unlisten?.()
     }
-  }, [applySample])
+  }, [])
 
   // 只在进页面时要一次当前采样。有缓存就不再读 HID。
   // 换设备不在这里读，否则会和托盘那次采样各开一条 HID。
   useEffect(() => {
     const deviceId = selectedIdRef.current
     const device = deviceId ? (getDeviceById(deviceId) ?? deviceRegistry[0]) : undefined
-    if (!device)
-      return
+    if (!device) return
     let cancelled = false
-    void device.readBattery().then((info) => {
-      if (!cancelled && selectedIdRef.current === device.id)
-        applySample(device.id, info)
-    }).catch((e: unknown) => {
-      if (!cancelled && selectedIdRef.current === device.id)
-        setError({ deviceId: device.id, message: String(e) })
-    })
+    void device
+      .readBattery()
+      .then((info) => {
+        if (!cancelled && selectedIdRef.current === device.id) {
+          setSample({ deviceId: device.id, info, at: new Date() })
+          setError((current) => (current?.deviceId === device.id ? null : current))
+        }
+      })
+      .catch((e: unknown) => {
+        if (!cancelled && selectedIdRef.current === device.id)
+          setError({ deviceId: device.id, message: String(e) })
+      })
     return () => {
       cancelled = true
     }
-  }, [applySample])
+  }, [])
 
-  const refresh = useCallback(async () => {
-    if (!selected)
-      return
+  async function refresh() {
+    if (!selected) return
     const deviceId = selected.id
     setRefreshingId(deviceId)
-    setError(current => current?.deviceId === deviceId ? null : current)
+    setError((current) => (current?.deviceId === deviceId ? null : current))
     try {
       const info = await selected.readBattery({ fresh: true })
-      // 读取期间如果已经换成另一只，丢掉这次结果。新设备的电量由 battery-updated 送来。
-      if (useSettingsStore.getState().trayDeviceId !== trayDeviceId)
-        return
-      if ((getDeviceById(useSettingsStore.getState().trayDeviceId) ?? deviceRegistry[0])?.id !== deviceId)
+      // 读取期间用户已切到另一只：丢弃本次结果，等新设备的 battery-updated / 下一轮。
+      if (useSettingsStore.getState().trayDeviceId !== trayDeviceId) return
+      if (
+        (getDeviceById(useSettingsStore.getState().trayDeviceId) ?? deviceRegistry[0])?.id !==
+        deviceId
+      )
         return
       applySample(deviceId, info)
-    }
-    catch (e) {
-      if ((getDeviceById(useSettingsStore.getState().trayDeviceId) ?? deviceRegistry[0])?.id !== deviceId)
+    } catch (e) {
+      if (
+        (getDeviceById(useSettingsStore.getState().trayDeviceId) ?? deviceRegistry[0])?.id !==
+        deviceId
+      )
         return
       setError({ deviceId, message: String(e) })
+    } finally {
+      setRefreshingId((current) => (current === deviceId ? null : current))
     }
-    finally {
-      setRefreshingId(current => current === deviceId ? null : current)
-    }
-  }, [applySample, selected, trayDeviceId])
+  }
 
   const selectDevice = (id: string) => {
     categoryRequestRef.current += 1
     setBrowsingCategory(null)
     setTrayDeviceId(id)
     setAutoRefresh(true)
-    void invoke('set_tray_device', {
-      deviceId: id,
-      selectedByCategory: useSettingsStore.getState().selectedByCategory,
-    }).catch((e: unknown) => console.error('set_tray_device failed', e))
+    void commands.setTrayDevice(id, useSettingsStore.getState().selectedByCategory).catch((e: unknown) => console.error('set_tray_device failed', e))
   }
 
   const selectCategory = async (category: DeviceCategory) => {

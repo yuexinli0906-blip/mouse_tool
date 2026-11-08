@@ -1,10 +1,7 @@
 /** 首页装饰用形态：随机表情，停顿后再换下一句几率换形状与配色。 */
 import type { MorphBotElement, MorphBotState } from '@/vendor/morph-bot/morph-bot.js'
 import { useLayoutEffect, useRef } from 'react'
-import {
-  MORPH_BOT_SHAPES,
-  MORPH_BOT_STATES,
-} from '@/vendor/morph-bot/morph-bot.js'
+import { MORPH_BOT_SHAPES, MORPH_BOT_STATES } from '@/vendor/morph-bot/morph-bot.js'
 
 /** 体色：避开可能看不清眼睛的实心深色。 */
 const BODY_COLORS = [
@@ -33,10 +30,10 @@ function randomHold(): number {
 
 /** 从列表挑一个尽量不同于 current 的项；列表只剩一项时退回该项。 */
 function pickOther<T extends string>(items: readonly T[], current: string): T {
-  const pool = items.filter(item => item !== current)
+  const pool = items.filter((item) => item !== current)
   const source = pool.length > 0 ? pool : items
   const index = Math.floor(Math.random() * source.length)
-  return source[index] ?? source[0] as T
+  return source[index] ?? (source[0] as T)
 }
 
 function sleep(ms: number): Promise<void> {
@@ -48,10 +45,10 @@ function sleep(ms: number): Promise<void> {
 function pointInHost(host: HTMLElement, clientX: number, clientY: number, pad = 6): boolean {
   const r = host.getBoundingClientRect()
   return (
-    clientX >= r.left - pad
-    && clientX <= r.right + pad
-    && clientY >= r.top - pad
-    && clientY <= r.bottom + pad
+    clientX >= r.left - pad &&
+    clientX <= r.right + pad &&
+    clientY >= r.top - pad &&
+    clientY <= r.bottom + pad
   )
 }
 
@@ -65,8 +62,7 @@ export function MorphBot({ size = 160 }: Props) {
 
   useLayoutEffect(() => {
     const host = hostRef.current
-    if (!host)
-      return
+    if (!host) return
 
     const bot: MorphBotElement = document.createElement('morph-bot')
     bot.setAttribute('decorative', '')
@@ -77,11 +73,12 @@ export function MorphBot({ size = 160 }: Props) {
     bot.setMaterial('solid', { color: pickOther(BODY_COLORS, '') })
     bot.configure({
       states: Object.fromEntries(
-        MORPH_BOT_STATES.map(state => [state, { gazeScale: GAZE_SCALE }]),
+        MORPH_BOT_STATES.map((state) => [state, { gazeScale: GAZE_SCALE }]),
       ) as Record<MorphBotState, { gazeScale: number }>,
     })
     host.replaceChildren(bot)
 
+    // effect 清理时置 true，避免卸载后异步回调仍改 DOM/切形态
     let cancelled = false
     /**
      * 悬停检测不用 host 的 pointerenter：morph-bot 是 open shadow + SVG，
@@ -91,23 +88,19 @@ export function MorphBot({ size = 160 }: Props) {
     let hoverPaused = false
 
     const setHoverPaused = (next: boolean) => {
-      if (hoverPaused === next)
-        return
+      if (hoverPaused === next) return
       hoverPaused = next
-      if (next)
-        bot.stopSequence()
+      if (next) bot.stopSequence()
     }
 
     const syncHoverFromEvent = (event: PointerEvent) => {
-      if (cancelled)
-        return
+      if (cancelled) return
       setHoverPaused(pointInHost(host, event.clientX, event.clientY))
     }
 
     const waitWhileHoverPaused = async () => {
       while (true) {
-        if (!hoverPaused || cancelled)
-          break
+        if (!hoverPaused || cancelled) break
         await sleep(80)
       }
     }
@@ -122,21 +115,17 @@ export function MorphBot({ size = 160 }: Props) {
     const run = async () => {
       let state: MorphBotState = pickOther(MORPH_BOT_STATES, '')
       while (true) {
-        if (cancelled)
-          break
+        if (cancelled) break
         await waitWhileHoverPaused()
-        if (cancelled)
-          return
+        if (cancelled) return
 
         let result: { cancelled: boolean }
         try {
           result = await bot.playSequence([{ state, hold: randomHold() }], { loop: false })
-        }
-        catch {
+        } catch {
           return
         }
-        if (cancelled)
-          return
+        if (cancelled) return
 
         // 悬停打断（stopSequence）→ 等到离开再开下一轮，切勿把循环结束掉
         if (result.cancelled || hoverPaused) {
@@ -145,12 +134,13 @@ export function MorphBot({ size = 160 }: Props) {
         }
 
         await waitWhileHoverPaused()
-        if (cancelled || hoverPaused)
-          continue
+        if (cancelled || hoverPaused) continue
 
         if (Math.random() < 0.5) {
           bot.setShape(pickOther(MORPH_BOT_SHAPES, bot.shape))
-          bot.setMaterial('solid', { color: pickOther(BODY_COLORS, bot.getAttribute('color') ?? '') })
+          bot.setMaterial('solid', {
+            color: pickOther(BODY_COLORS, bot.getAttribute('color') ?? ''),
+          })
         }
         state = pickOther(MORPH_BOT_STATES, bot.state)
       }

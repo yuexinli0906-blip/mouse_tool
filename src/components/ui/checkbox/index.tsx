@@ -3,20 +3,10 @@ import { Checkbox as CheckboxPrimitive } from 'radix-ui'
 import { cn } from '@/lib/utils'
 import css from './style.module.css'
 
-function Checkbox({
-  className,
-  ...props
-}: React.ComponentProps<typeof CheckboxPrimitive.Root>) {
+function Checkbox({ className, ...props }: React.ComponentProps<typeof CheckboxPrimitive.Root>) {
   return (
-    <CheckboxPrimitive.Root
-      data-slot="checkbox"
-      className={cn(css.root, className)}
-      {...props}
-    >
-      <CheckboxPrimitive.Indicator
-        data-slot="checkbox-indicator"
-        className={css.indicator}
-      >
+    <CheckboxPrimitive.Root data-slot="checkbox" className={cn(css.root, className)} {...props}>
+      <CheckboxPrimitive.Indicator data-slot="checkbox-indicator" className={css.indicator}>
         <svg
           viewBox="0 0 24 24"
           className={css.icon}

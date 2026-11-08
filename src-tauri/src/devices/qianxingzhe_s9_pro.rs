@@ -603,11 +603,11 @@ mod tests {
 
 // 设置协议来源：shan.ipigame.cn/app-Cn5AWPhI.js，wa/ul 控制器。
 // 只切现有档位，保留所有 DPI 原始编码和颜色；不提供恢复出厂/批量写入。
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct S9Settings {
     dpi_stages: Vec<u32>,
-    active_stage: usize,
+    active_stage: u8,
     polling_rate: u32,
     supported_polling_rates: Vec<u32>,
 }
@@ -710,7 +710,7 @@ fn read_settings_snapshot(device: &HidDevice, wireless: bool) -> Result<Settings
     Ok(SettingsSnapshot {
         public: S9Settings {
             dpi_stages,
-            active_stage: active - 1,
+            active_stage: (active - 1) as u8,
             polling_rate,
             supported_polling_rates: vec![125, 250, 500, 1000],
         },
@@ -721,6 +721,7 @@ fn read_settings_snapshot(device: &HidDevice, wireless: bool) -> Result<Settings
     })
 }
 #[tauri::command]
+#[specta::specta]
 pub async fn get_s9_settings() -> Result<S9Settings, String> {
     tauri::async_runtime::spawn_blocking(|| {
         let _guard = READ_LOCK.lock().map_err(|_| "设备锁失效")?;
@@ -731,8 +732,9 @@ pub async fn get_s9_settings() -> Result<S9Settings, String> {
     .map_err(|e| e.to_string())?
 }
 #[tauri::command]
+#[specta::specta]
 pub async fn set_s9_settings(
-    active_stage: Option<usize>,
+    active_stage: Option<u8>,
     polling_rate: Option<u32>,
 ) -> Result<S9Settings, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -743,7 +745,7 @@ pub async fn set_s9_settings(
         let (device, wireless) = open_settings_device()?;
         let before = read_settings_snapshot(&device, wireless)?;
         let mut command = if let Some(stage) = active_stage {
-            if stage >= before.public.dpi_stages.len() {
+            if stage as usize >= before.public.dpi_stages.len() {
                 return Err("DPI 档位越界".into());
             }
             vec![
@@ -754,11 +756,11 @@ pub async fn set_s9_settings(
                 58,
                 0,
                 (((stage + 1) as u8) << 4) | (before.profile & 15),
-                before.raw_dpi[stage * 2],
-                before.raw_dpi[stage * 2 + 1],
-                before.colors[stage * 3],
-                before.colors[stage * 3 + 1],
-                before.colors[stage * 3 + 2],
+                before.raw_dpi[stage as usize * 2],
+                before.raw_dpi[stage as usize * 2 + 1],
+                before.colors[stage as usize * 3],
+                before.colors[stage as usize * 3 + 1],
+                before.colors[stage as usize * 3 + 2],
             ]
         } else {
             let code = match polling_rate.unwrap() {
@@ -811,7 +813,7 @@ mod settings_hardware_tests {
         tauri::async_runtime::block_on(async {
             let original = super::get_s9_settings().await.unwrap();
             println!("原始设置: {:?}", original);
-            let stage = (original.active_stage + 1) % original.dpi_stages.len();
+            let stage = (original.active_stage + 1) % original.dpi_stages.len() as u8;
             let rate = if original.polling_rate == 500 {
                 1000
             } else {

@@ -1,0 +1,46 @@
+---
+description: >-
+  本项目已启用 React Compiler。禁止再手写 useCallback / useMemo
+  （除非极特殊且注释说明原因）。改 React 组件 / hooks 时套用。
+globs:
+  - src/**/*.{ts,tsx}
+  - vite.config.ts
+  - eslint.config.mjs
+alwaysApply: false
+---
+
+# React Compiler：禁止手写 useCallback / useMemo
+
+本仓库前端已通过 Vite + Babel 启用 **React Compiler**（见 `vite.config.ts` 中
+`@rolldown/plugin-babel` + `reactCompilerPreset()`），ESLint 使用
+`eslint-plugin-react-hooks` 的 `recommended-latest`（含 Compiler 相关规则）。
+
+Compiler 会在构建期自动做 memoization，**不要**再为「避免重渲染」手写
+`useCallback` / `useMemo`（以及无必要的 `React.memo`）。
+
+## 要求
+
+- 新增或改动 `src/` 下组件时：直接写普通函数与内联回调，依赖数组交给 Compiler。
+- 不要为「传给子组件」「放进 effect 依赖」而机械包一层 `useCallback` / `useMemo`。
+- 清理历史代码时：可删除已无必要的 `useCallback` / `useMemo` 包装，保持行为不变。
+
+## 例外（极少）
+
+仅在以下情况可保留或新增，且必须在调用处用简短中文注释说明原因：
+
+1. 与 **非 React** 订阅 API 的身份稳定约定（例如第三方库要求回调引用长期不变，且实测 Compiler 未覆盖）。
+2. **已知 Compiler 跳过** 的组件（ESLint / 构建提示 `react-hooks` Compiler 规则报 skip），临时手写 memo 作兜底，并注明后续应改写以让 Compiler 接管。
+
+禁止以「习惯」「感觉会卡」为由加 `useCallback` / `useMemo`。
+
+## 配置锚点（勿拆）
+
+- `vite.config.ts`：`react()` + `babel({ presets: [reactCompilerPreset()] })`
+- `eslint.config.mjs`：`reactHooks.configs['recommended-latest']`
+- 依赖：`babel-plugin-react-compiler`、`@rolldown/plugin-babel`（随 `@vitejs/plugin-react` 文档升级时同步改配置，不要回退到手写 memo）
+
+## 检查清单
+
+- [ ] 本次改动是否新增了无注释说明的 `useCallback` / `useMemo`？
+- [ ] 若有例外注释，是否写清了「为何 Compiler 不够」？
+- [ ] 是否误删了 `vite` / `eslint` 上的 Compiler 接入？

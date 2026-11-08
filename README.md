@@ -48,6 +48,12 @@ pnpm dev:app
 pnpm dev
 ```
 
+壳层命令和 `battery-updated` 事件的 TypeScript 绑定在 `src/bindings.ts`（Specta / tauri-specta，不要手改）。改了 Rust 命令、事件或它们的参数/返回类型后重新生成并提交：
+
+```powershell
+pnpm bindings
+```
+
 ## 📦 下载安装
 
 前往 [GitHub Releases](https://github.com/wjyugutou/mouse_tool/releases) 下载 Windows 安装包。
@@ -103,19 +109,19 @@ pnpm build:app
 - 前端：`src/plugins/<id>/`（含 `manifest.json`）
 - 后端：`src-tauri/src/devices/<id>.rs`，并在 `PLUGINS` 注册表追加一行
 
-窗口、设置、托盘、日志、自动更新留在壳层。命令在 `generate_handler!` 里静态注册，不加载 DLL。电量只有一条壳层命令：`get_battery(device_id)`；`device_id` 与前端适配器的 `id` 来自同一份 `manifest.json`。
+窗口、设置、托盘、日志、自动更新留在壳层。命令在 `collect_commands!` 里静态注册，不加载 DLL。电量只有一条壳层命令：`get_battery(device_id)`；前端通过 `commands.getBattery` 调用。`device_id` 与前端适配器的 `id` 来自同一份 `manifest.json`。
 
 新增设备时，无需重写主窗口、设置页、托盘和自动更新等核心功能。详细说明请参阅 [设备插件开发指南](docs/plugin-development.md)。
 
 ### 已注册设备
 
-| 插件 id | 名称 | 说明 |
-| --- | --- | --- |
-| `vt9-air` | VT9 AIR | 雷柏 VT9 AIR；被动中断读 HID 电量（Report `0xBB`）。不要对它用 GetInputReport / Feature，会卡鼠标 |
-| `razer-viper-ultimate` | 毒蝰终极版 Viper Ultimate | 有线 `1532:007A` / 接收器 `1532:007B`；OpenRazer Feature（class `0x07` / cmd `0x80`）；充电状态同族命令 `0x84` |
-| `mchose-a5-v3-ultra-plus` | 迈从 A5 V3 Ultra+ | 2.4G 无线 · 3955 平台 |
-| `vgn-s99` | VGN S99 | 2.4G 无线机械键盘（首只 `keyboard` 分类）。接收器 `320F:5088` 的 `0xFF1C` 厂商接口，Output 报文 Report ID `0x04` + 命令 `0x1A` 查询，Input 中断读回。**不要用 Feature 报告**：该接口描述符无 `B1` 项，`HidD_SetFeature` 恒返回 `0x1`。HID 可能被 VGN VHUB 独占 |
-| `qianxingzhe-s9-pro` | 前行者 S9 Pro | 2.4G 无线鼠标。VID `372E`（IPI/PIAO，`ms_pix_v1` 协议），接收器 `372E:103D` 的 `0xFF00` 厂商接口走 **Feature 报告**（Report ID `0x03`，payload 63 B），命令 `get_basic_info`（`0x4F/0x81`，首字节 CRC = `sum(payload[1..]) % 256`），**电量 = 回包 `buf[6]`**。首读可能只有 5 字节状态桩，必须重读；充电时该字段是哨兵值 `0xE4`(228)，拿不到百分比。**只读电量**，不做 DPI / 灯光 / 宏。只支持 S9 系列（Pro `0x1029`；Ultra `0x1027`、Max `0x105E` 会明确拒绝冒充）；2.4G 接收器 PID `1026/1033/103D/1055` 由三型号共用，无法区分型号 |
+| 插件 id                   | 名称                      | 说明                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vt9-air`                 | VT9 AIR                   | 雷柏 VT9 AIR；被动中断读 HID 电量（Report `0xBB`）。不要对它用 GetInputReport / Feature，会卡鼠标                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `razer-viper-ultimate`    | 毒蝰终极版 Viper Ultimate | 有线 `1532:007A` / 接收器 `1532:007B`；OpenRazer Feature（class `0x07` / cmd `0x80`）；充电状态同族命令 `0x84`                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `mchose-a5-v3-ultra-plus` | 迈从 A5 V3 Ultra+         | 2.4G 无线 · 3955 平台                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `vgn-s99`                 | VGN S99                   | 2.4G 无线机械键盘（首只 `keyboard` 分类）。接收器 `320F:5088` 的 `0xFF1C` 厂商接口，Output 报文 Report ID `0x04` + 命令 `0x1A` 查询，Input 中断读回。**不要用 Feature 报告**：该接口描述符无 `B1` 项，`HidD_SetFeature` 恒返回 `0x1`。HID 可能被 VGN VHUB 独占                                                                                                                                                                                                                                                                        |
+| `qianxingzhe-s9-pro`      | 前行者 S9 Pro             | 2.4G 无线鼠标。VID `372E`（IPI/PIAO，`ms_pix_v1` 协议），接收器 `372E:103D` 的 `0xFF00` 厂商接口走 **Feature 报告**（Report ID `0x03`，payload 63 B），命令 `get_basic_info`（`0x4F/0x81`，首字节 CRC = `sum(payload[1..]) % 256`），**电量 = 回包 `buf[6]`**。首读可能只有 5 字节状态桩，必须重读；充电时该字段是哨兵值 `0xE4`(228)，拿不到百分比。**只读电量**，不做 DPI / 灯光 / 宏。只支持 S9 系列（Pro `0x1029`；Ultra `0x1027`、Max `0x105E` 会明确拒绝冒充）；2.4G 接收器 PID `1026/1033/103D/1055` 由三型号共用，无法区分型号 |
 
 ## 🏗️ 项目结构
 

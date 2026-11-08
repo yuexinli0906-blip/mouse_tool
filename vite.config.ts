@@ -2,9 +2,10 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
+import babel from '@rolldown/plugin-babel'
 import tailwindcss from '@tailwindcss/vite'
-import { TanStackRouterVite } from '@tanstack/router-plugin/vite'
-import react from '@vitejs/plugin-react'
+import { tanstackRouter } from '@tanstack/router-plugin/vite'
+import react, { reactCompilerPreset } from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
 const host = process.env.TAURI_DEV_HOST
@@ -14,7 +15,13 @@ const pkg = JSON.parse(
 
 export default defineConfig(() => ({
   plugins: [
-    TanStackRouterVite({
+    // React Compiler (@vitejs/plugin-react v6+: babel option removed; use reactCompilerPreset)
+    babel({
+      include: /\.[jt]sx?$/,
+      presets: [reactCompilerPreset()],
+    }),
+
+    tanstackRouter({
       target: 'react',
       autoCodeSplitting: true,
       routesDirectory: './src/routes',

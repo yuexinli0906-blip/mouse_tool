@@ -1,0 +1,55 @@
+---
+description: >-
+  前后端「电量 / 设置」必须单一数据源。改 settings store、tray 读设置、BatteryHub、
+  HomePage 电量展示、或新增设置项/轮询时启用。
+globs:
+  - src/stores/**
+  - src/pages/**
+  - src/components/BatteryCard.*
+  - src/components/DeviceList.*
+  - src-tauri/src/battery.rs
+  - src-tauri/src/tray.rs
+  - src-tauri/src/lib.rs
+alwaysApply: false
+---
+
+# 电量 / 设置：单一数据源
+
+改电量展示、托盘、设置页或持久化时，遵守本规则。禁止前后端各自维护会漂移的第二份权威拷贝。
+
+## 设置（Settings）
+
+**权威源**：前端 Zustand `useSettingsStore` + `@tauri-store/zustand` 的 `settings` store（见 `src/stores/settings.ts`）。磁盘持久化只走该 store（`settingsTauriStore` / `tauri-plugin-zustand`）。
+
+**Rust 侧**：
+
+- 只通过 `app.zustand().get` / `get_or` / `watch` / `patch` 读写同一 `settings` store。
+- `SettingsSnap`（`tray.rs`）仅作变更对比的内存快照，**不是**第二持久化源；禁止另起 JSON/注册表/自建文件存同一套设置。
+- 托盘改设备等写回必须 `patch` 同一 store，让前端订阅到同一变更，禁止只改 Rust 本地变量当「已保存」。
+
+**前端侧**：
+
+- UI 只读/写 `useSettingsStore`；禁止再造一份 `localStorage` / 组件私有默认值与持久化字段并行长期存活。
+- 新增设置字段：在 store 类型、`filterKeys`、默认值、以及 Rust `get_or` 默认值四处对齐；默认值语义前后端一致。
+
+## 电量（Battery）
+
+**权威源（读取与缓存）**：Rust `BatteryHub`（`src-tauri/src/battery.rs`）。同一设备、同一代际的 HID 读取只走 `read_shared` / `get_battery`；合并并发、缓存命中、失效（`invalidate_device`）都在 Hub 内完成。
+
+**推送，不双写**：
+
+- 有效采样后：`emit("battery-updated")` → 前端；`tray::publish_battery` → 托盘。
+- 前端 `HomePage` 的 `sample` state、托盘 `TrayBoard.samples` 是**展示镜像**，只能由 Hub 结果 / 上述事件更新，禁止各自再开 HID 轮询或维护「另一套最新电量」。
+- 手动刷新：`readBattery({ fresh: true })` → 同一 `get_battery`，仍回写 Hub。
+
+**禁止**：
+
+- 前端自己算/缓存「真值」却不与 Hub 同步。
+- 托盘与主窗口对同一设备各读一遍 HID 当两套结果。
+- 再引入第二个电量 store / 全局变量与 `BatteryHub.samples` 并行权威。
+
+## 检查清单
+
+- [ ] 设置字段是否只出现在 `settings` store + Rust zustand 读写？
+- [ ] 电量展示变更是否只订阅 Hub 结果（invoke 返回或 `battery-updated`）？
+- [ ] 是否避免了第二份会独立变旧的持久化或轮询？

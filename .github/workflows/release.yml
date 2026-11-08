@@ -14,6 +14,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v7
@@ -45,6 +47,26 @@ jobs:
             node scripts/sync-version.mjs
           fi
 
+      - name: Load release notes
+        id: notes
+        shell: bash
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          FILE="docs/releases/v${VER}.md"
+          if [[ ! -f "$FILE" ]]; then
+            PREV=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+            if [[ -n "$PREV" ]]; then
+              node scripts/gen-release-notes.mjs --from "$PREV" --to "$GITHUB_REF_NAME" --write "$FILE"
+            else
+              node scripts/gen-release-notes.mjs --to "$GITHUB_REF_NAME" --write "$FILE"
+            fi
+          fi
+          {
+            echo 'body<<EOF'
+            cat "$FILE"
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
       - name: Install frontend dependencies
         run: pnpm install
 
@@ -57,7 +79,8 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: yugutou_tool v__VERSION__
-          releaseBody: Download installers from Assets. In-app updater uses latest.json.
+          releaseBody: ${{ steps.notes.outputs.body }}
+          generateReleaseNotes: false
           releaseDraft: false
           prerelease: false
           updaterJsonPreferNsis: false

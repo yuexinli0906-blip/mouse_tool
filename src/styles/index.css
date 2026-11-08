@@ -1,5 +1,5 @@
-@import "tailwindcss";
-@import "tw-animate-css";
+@import 'tailwindcss';
+@import 'tw-animate-css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -82,15 +82,15 @@
   }
   body {
     @apply bg-background text-foreground antialiased overflow-hidden;
-    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   }
 
-  input[type="number"]::-webkit-outer-spin-button,
-  input[type="number"]::-webkit-inner-spin-button {
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
     -webkit-appearance: none;
     margin: 0;
   }
-  input[type="number"] {
+  input[type='number'] {
     -moz-appearance: textfield;
     appearance: textfield;
   }
@@ -109,7 +109,7 @@
       background: transparent; /* 通常设置为透明或极浅的颜色 */
       border-radius: 4px;
     }
-    
+
     &:hover::-webkit-scrollbar-track {
       background: rgba(220, 223, 230, 0.3); /* 通常设置为透明或极浅的颜色 */
     }
@@ -121,7 +121,6 @@
       border-radius: 4px;
       transition: background-color 0.3s;
     }
-    
 
     /* 4. 鼠标悬停时的滑块颜色 */
     &::-webkit-scrollbar-thumb {

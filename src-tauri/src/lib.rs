@@ -13,11 +13,43 @@ mod devices;
 mod plugin_sdk;
 mod tray;
 
+use std::path::Path;
+
 use battery::get_battery;
 use devices::list_devices;
+use specta_typescript::Typescript;
 use tauri::Manager;
 use tauri_plugin_autostart::ManagerExt;
+use tauri_specta::{collect_commands, collect_events, Builder, ErrorHandlingMode};
 use tray::{close_behavior, set_tray_device, setup_tray};
+
+/// 壳层命令与 `battery-updated` 事件。注册表是静态的，和以前的 `generate_handler!` 一样。
+fn specta_builder() -> Builder<tauri::Wry> {
+    Builder::<tauri::Wry>::new()
+        // `open_log_dir` 的错误仍走 promise reject，设置页继续 `.catch`。
+        .error_handling(ErrorHandlingMode::Throw)
+        .commands(collect_commands![
+            get_battery,
+            list_devices,
+            devices::qianxingzhe_s9_pro::get_s9_settings,
+            devices::qianxingzhe_s9_pro::set_s9_settings,
+            get_log_path,
+            open_log_dir,
+            set_tray_device,
+            autostart_diag::get_autostart_diagnostic
+        ])
+        .events(collect_events![battery::BatteryUpdated])
+}
+
+fn export_bindings(builder: &Builder<tauri::Wry>) {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/bindings.ts");
+    builder.export(Typescript::default(), &path).unwrap_or_else(|err| {
+        panic!(
+            "failed to export typescript bindings to {}: {err:?}",
+            path.display()
+        )
+    });
+}
 
 /// 安装/升级/改目录后 Run 项可能仍指向旧路径；若自启仍开启则用当前 exe 重写注册表。
 fn refresh_autostart_exe_path(app: &tauri::App) {
@@ -41,6 +73,7 @@ fn refresh_autostart_exe_path(app: &tauri::App) {
 
 /// 返回日志文件绝对路径，供设置页展示 / 打开目录。
 #[tauri::command]
+#[specta::specta]
 fn get_log_path() -> String {
     app_log::log_file_path().to_string_lossy().into_owned()
 }
@@ -48,6 +81,7 @@ fn get_log_path() -> String {
 /// Ensure log dir exists and open it in the system file manager.
 /// Frontend openPath fails silently when opener allow-open-path has no path scope.
 #[tauri::command]
+#[specta::specta]
 fn open_log_dir() -> Result<(), String> {
     let dir = app_log::log_dir();
     std::fs::create_dir_all(&dir).map_err(|e| format!("create log dir failed: {e}"))?;
@@ -81,6 +115,10 @@ fn open_log_dir() -> Result<(), String> {
 pub fn run() {
     app_log::init();
     app_log::info("run() enter");
+    let builder = specta_builder();
+    // 调试启动时把绑定写到 src/bindings.ts。路径相对 crate 目录，不依赖进程 cwd。
+    #[cfg(debug_assertions)]
+    export_bindings(&builder);
     // 插件、托盘、关窗拦截、命令注册
     // 主窗口默认 invisible；普通启动再 show，开机自启（--autostart）保持托盘后台
     let result = tauri::Builder::default()
@@ -92,7 +130,10 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .setup(|app| {
+        .invoke_handler(builder.invoke_handler())
+        .setup(move |app| {
+            // 先挂上事件名，托盘采样线程才会用对 `battery-updated`。
+            builder.mount_events(app);
             app_log::info("setup callback begin");
             if let Err(e) = setup_tray(app) {
                 app_log::error(&format!("setup_tray failed: {e}"));
@@ -129,16 +170,6 @@ pub fn run() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![
-            get_battery,
-            list_devices,
-            devices::qianxingzhe_s9_pro::get_s9_settings,
-            devices::qianxingzhe_s9_pro::set_s9_settings,
-            get_log_path,
-            open_log_dir,
-            set_tray_device,
-            autostart_diag::get_autostart_diagnostic
-        ])
         .run(tauri::generate_context!());
 
     if let Err(e) = result {
@@ -146,4 +177,12 @@ pub fn run() {
         panic!("error while running tauri application: {e}");
     }
     app_log::info("run() exited normally");
+}
+
+#[cfg(test)]
+mod bindings_export {
+    #[test]
+    fn export_bindings() {
+        super::export_bindings(&super::specta_builder());
+    }
 }

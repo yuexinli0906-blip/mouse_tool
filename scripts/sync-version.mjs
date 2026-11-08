@@ -21,13 +21,10 @@ writeFileSync(cargoPath, cargo)
 const lockPath = join(root, 'src-tauri', 'Cargo.lock')
 const lock = readFileSync(lockPath, 'utf8')
 let foundLockVersion = false
-const nextLock = lock.replace(
-  /(name = "yugutou_tool"\r?\nversion = ")[^"]+"/,
-  (_, prefix) => {
-    foundLockVersion = true
-    return `${prefix}${version}"`
-  },
-)
+const nextLock = lock.replace(/(name = "yugutou_tool"\r?\nversion = ")[^"]+"/, (_, prefix) => {
+  foundLockVersion = true
+  return `${prefix}${version}"`
+})
 if (!foundLockVersion) {
   console.error('Cargo.lock 里没有找到 yugutou_tool 的 version')
   process.exit(1)

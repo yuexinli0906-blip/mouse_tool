@@ -34,17 +34,17 @@ export function DeviceList({
   autoIntervalSec,
 }: Props) {
   const [category, setCategory] = useState<DeviceCategory>(() => {
-    return devices.find(device => device.id === activeId)?.category ?? 'mouse'
+    return devices.find((device) => device.id === activeId)?.category ?? 'mouse'
   })
   const selectedId = selectedByCategory[category]
-  const visible = devices.filter(device => device.category === category)
-  const activeCategory = devices.find(device => device.id === activeId)?.category
+  const visible = devices.filter((device) => device.category === category)
+  const activeCategory = devices.find((device) => device.id === activeId)?.category
 
   // 托盘/设置里换了设备时，侧栏也跟着切到对应分类。
   useEffect(() => {
     if (activeCategory) {
       // 外部（托盘/设置）切换设备时同步分类，这是有意的 props → state 同步。
-      // eslint-disable-next-line react/set-state-in-effect
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCategory(activeCategory)
     }
   }, [activeCategory])
@@ -99,76 +99,67 @@ export function DeviceList({
           <p className="text-muted-foreground text-[10px] font-medium tracking-[0.18em] uppercase">
             设备
           </p>
-          <span className="text-muted-foreground text-[10px] tabular-nums">
-            {visible.length}
-          </span>
+          <span className="text-muted-foreground text-[10px] tabular-nums">{visible.length}</span>
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto px-3 pb-3">
-          {visible.length === 0
-            ? (
-                <div className="border-border/60 flex flex-col items-center gap-2 rounded-2xl border border-dashed px-4 py-8 text-center">
-                  <Icon
-                    icon={CATEGORY_ICON[category]}
-                    className="text-muted-foreground/50 size-6"
-                  />
-                  <p className="text-muted-foreground text-xs">
-                    {`暂无${DEVICE_CATEGORY_LABEL[category]}`}
-                  </p>
-                </div>
-              )
-            : (
-                <ul className="flex flex-col gap-1.5">
-                  {visible.map((device) => {
-                    const selected = device.id === selectedId
-                    return (
-                      <li key={device.id}>
-                        <button
-                          type="button"
-                          title={device.description}
-                          onClick={() => onSelect(device.id)}
-                          className={cn(
-                            'group relative flex w-full items-center gap-3 rounded-2xl border px-3 py-2.5 text-left transition-all',
-                            selected
-                              ? 'border-primary/35 bg-primary/10'
-                              : 'border-transparent hover:border-border/60 hover:bg-accent/50',
-                          )}
-                        >
+          {visible.length === 0 ? (
+            <div className="border-border/60 flex flex-col items-center gap-2 rounded-2xl border border-dashed px-4 py-8 text-center">
+              <Icon icon={CATEGORY_ICON[category]} className="text-muted-foreground/50 size-6" />
+              <p className="text-muted-foreground text-xs">
+                {`暂无${DEVICE_CATEGORY_LABEL[category]}`}
+              </p>
+            </div>
+          ) : (
+            <ul className="flex flex-col gap-1.5">
+              {visible.map((device) => {
+                const selected = device.id === selectedId
+                return (
+                  <li key={device.id}>
+                    <button
+                      type="button"
+                      title={device.description}
+                      onClick={() => onSelect(device.id)}
+                      className={cn(
+                        'group relative flex w-full items-center gap-3 rounded-2xl border px-3 py-2.5 text-left transition-all',
+                        selected
+                          ? 'border-primary/35 bg-primary/10'
+                          : 'border-transparent hover:border-border/60 hover:bg-accent/50',
+                      )}
+                    >
+                      {selected && (
+                        <span className="bg-primary absolute inset-y-2 left-0 w-0.5 rounded-full" />
+                      )}
+                      <span
+                        className={cn(
+                          'flex size-9 shrink-0 items-center justify-center rounded-xl transition-colors',
+                          selected
+                            ? 'bg-primary/15 text-primary'
+                            : 'bg-muted/60 text-muted-foreground group-hover:text-foreground',
+                        )}
+                      >
+                        <Icon icon={CATEGORY_ICON[device.category]} className="size-4" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1.5">
+                          <span className="truncate text-sm font-medium">{device.name}</span>
                           {selected && (
-                            <span className="bg-primary absolute inset-y-2 left-0 w-0.5 rounded-full" />
+                            <Icon
+                              icon="mdi:check-circle"
+                              className="text-primary size-3.5 shrink-0"
+                            />
                           )}
-                          <span
-                            className={cn(
-                              'flex size-9 shrink-0 items-center justify-center rounded-xl transition-colors',
-                              selected
-                                ? 'bg-primary/15 text-primary'
-                                : 'bg-muted/60 text-muted-foreground group-hover:text-foreground',
-                            )}
-                          >
-                            <Icon icon={CATEGORY_ICON[device.category]} className="size-4" />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="flex items-center gap-1.5">
-                              <span className="truncate text-sm font-medium">
-                                {device.name}
-                              </span>
-                              {selected && (
-                                <Icon
-                                  icon="mdi:check-circle"
-                                  className="text-primary size-3.5 shrink-0"
-                                />
-                              )}
-                            </span>
-                            <span className="text-muted-foreground mt-0.5 block truncate text-[11px]">
-                              {device.description}
-                            </span>
-                          </span>
-                        </button>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
+                        </span>
+                        <span className="text-muted-foreground mt-0.5 block truncate text-[11px]">
+                          {device.description}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
         </div>
       </div>
 
@@ -178,9 +169,7 @@ export function DeviceList({
           <span
             className={cn(
               'inline-flex items-center gap-1.5 font-medium',
-              auto
-                ? 'text-emerald-600 dark:text-emerald-400'
-                : 'text-muted-foreground',
+              auto ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground',
             )}
           >
             <span
@@ -192,9 +181,7 @@ export function DeviceList({
             {auto ? `${autoIntervalSec}s` : '已暂停'}
           </span>
         </div>
-        <p className="text-muted-foreground/70 mt-1.5 text-[10px]">
-          本地 HID 读取 · 不上传
-        </p>
+        <p className="text-muted-foreground/70 mt-1.5 text-[10px]">本地 HID 读取 · 不上传</p>
       </div>
     </aside>
   )

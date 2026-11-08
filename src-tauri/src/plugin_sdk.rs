@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 
 /// 一级分类。与前端 `DeviceCategory` 同一套取值：`mouse` / `keyboard` / `headset`。
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "lowercase")]
 pub enum DeviceCategory {
     Mouse,
@@ -15,7 +15,7 @@ pub enum DeviceCategory {
 }
 
 /// 前端 `DeviceMeta` 与 `manifest.json` 的同一份字段。
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, specta::Type)]
 pub struct DeviceMeta {
     pub id: String,
     pub name: String,
@@ -24,7 +24,7 @@ pub struct DeviceMeta {
 }
 
 /// 电量结果。字段名与前端 `BatteryInfo` 一致。
-#[derive(Debug, Clone, Serialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, Default, specta::Type)]
 pub struct BatteryInfo {
     pub percent: Option<u8>,
     pub charging: Option<bool>,

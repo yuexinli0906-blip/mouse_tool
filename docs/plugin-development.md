@@ -12,20 +12,20 @@
 
 ## 目录
 
-| 作用 | 路径 |
-| --- | --- |
-| 元数据（唯一来源） | `src/plugins/<id>/manifest.json` |
-| 前端适配器 | `src/plugins/<id>/index.ts` |
-| 前端注册表 | `src/plugins/index.ts` 的 `deviceRegistry` |
-| 前端类型与 `createDeviceAdapter` | `src/plugin-sdk/` |
-| 页面用的再导出 | `src/devices/`（首页继续从这里取列表） |
-| Rust HID 实现 | `src-tauri/src/devices/<name>.rs`（文件名用下划线） |
-| Rust 契约 | `src-tauri/src/plugin_sdk.rs` |
-| Rust 注册表 | `src-tauri/src/devices/mod.rs` 的 `PLUGINS` |
+| 作用                             | 路径                                                |
+| -------------------------------- | --------------------------------------------------- |
+| 元数据（唯一来源）               | `src/plugins/<id>/manifest.json`                    |
+| 前端适配器                       | `src/plugins/<id>/index.ts`                         |
+| 前端注册表                       | `src/plugins/index.ts` 的 `deviceRegistry`          |
+| 前端类型与 `createDeviceAdapter` | `src/plugin-sdk/`                                   |
+| 页面用的再导出                   | `src/devices/`（首页继续从这里取列表）              |
+| Rust HID 实现                    | `src-tauri/src/devices/<name>.rs`（文件名用下划线） |
+| Rust 契约                        | `src-tauri/src/plugin_sdk.rs`                       |
+| Rust 注册表                      | `src-tauri/src/devices/mod.rs` 的 `PLUGINS`         |
 
 `manifest.json` 有四个字段：`id`、`name`、`description`、`category`。`category` 取 `mouse`、`keyboard`、`headset`，对应首页一级分类「鼠标 / 键盘 / 耳机」。前端 `import` 这个文件，Rust 用 `include_str!` 读同一个文件。不要在托盘、设置默认值或别的表里再写一份 id / 名称。不要恢复 `TRAY_DEVICES`，也不要在设置里写死 `vt9-air`。默认托盘设备是两张注册表的第一项，所以两张表的顺序要一致。
 
-电量只有一条壳层命令：`get_battery(device_id)`。前端是 `invoke('get_battery', { deviceId })`，`createDeviceAdapter` 已经这么调。不要再加无参、隐含只支持 VT9 的 `get_battery`。`list_devices` 返回 Rust 侧已注册的设备，用来对照 id。
+电量只有一条壳层命令：`get_battery(device_id)`。`createDeviceAdapter` 通过生成绑定 `commands.getBattery` 调用它（定义在 `src/bindings.ts`）。不要再加无参、隐含只支持 VT9 的 `get_battery`。`list_devices` 返回 Rust 侧已注册的设备，用来对照 id。
 
 现有五只：
 
@@ -45,17 +45,17 @@
 3. 在 `src/plugins/index.ts` 的 `deviceRegistry` 加一行 import。不要为了注册去改 `HomePage`。
 4. 在 `src-tauri/src/devices/` 加模块，文件名用下划线。`manifest_json` 用 `include_str!` 指向第 2 步那个 `manifest.json`。
 5. 在 `src-tauri/src/devices/mod.rs` 声明 `mod`，并在 `PLUGINS` 加一行。顺序与 `deviceRegistry` 相同。
-6. 命令不用新注册。`get_battery` 已经在 `generate_handler!` 里，按 `device_id` 分发。
+6. 命令不用新注册。`get_battery` 已经在 `collect_commands!` 里，按 `device_id` 分发。改了命令签名后跑 `pnpm bindings`，提交生成的 `src/bindings.ts`。
 7. 注意 `devices/mod.rs` 的单元测试断言了 `PLUGINS` 前几项的顺序和分类。**新增设备后这条测试会红，必须同步改**，否则 `cargo test --lib` 过不了。
 
 ### HID 通道的三种形态（选错会白干）
 
 加新设备时，先确认它用哪种通道，**不要默认套用某一只的写法**：
 
-| 形态 | 特征 | 例子 |
-| --- | --- | --- |
-| 被动中断读 | 设备自己周期性推报告 | 雷柏 VT9 AIR（Report `0xBB`） |
-| Feature 报告 | 描述符里**有 `B1` 项** | 雷蛇毒蝰（OpenRazer 协议） |
+| 形态                     | 特征                                        | 例子                                              |
+| ------------------------ | ------------------------------------------- | ------------------------------------------------- |
+| 被动中断读               | 设备自己周期性推报告                        | 雷柏 VT9 AIR（Report `0xBB`）                     |
+| Feature 报告             | 描述符里**有 `B1` 项**                      | 雷蛇毒蝰（OpenRazer 协议）                        |
 | Output 报文 + Input 读回 | 描述符里是 `81 00` + `91 00`，**没有 `B1`** | 迈从 A5 V3（`0x4D` 邮箱）、VGN S99（`0x1A` 邮箱） |
 
 **判据**：读设备报告描述符，看有没有 `B1`（Feature）项。没有 `B1` 却调用 `send_feature_report`，Windows 会返回 `0x1`（函数不正确），很容易误以为是设备被占用或命令写错。VGN S99 就踩过这个坑。
@@ -102,6 +102,8 @@ pnpm run check:card
 cargo test --lib
 ```
 
+改了命令或事件的类型后，再跑 `pnpm bindings`，把 `src/bindings.ts` 一起提交。
+
 在 `src-tauri` 目录执行。解析器要有单元测试，不要只靠插上鼠标才知道包格式对不对。
 
 实机在 Windows 上确认：
@@ -119,4 +121,5 @@ cargo test --lib
   ```
 
   这条是 `#[ignore]` 的实机测试，默认不跑（依赖硬件）。它会打印 `connected / percent / charging / detail`，并断言「有百分比时 ≤ 100；没百分比时必须是充电中」，防止把读取失败悄悄报成正常。
+
 - 探针复现协议用 `tools/hid-probe`：`hid-probe s9pro` 会发同一条 `0x4F/0x81` 查询并把每次读回的原始字节打出来。改协议时先用它看真实报文，再改进插件。

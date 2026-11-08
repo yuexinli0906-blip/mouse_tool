@@ -68,10 +68,9 @@ if (localTag.status === 0) {
   process.exit(1)
 }
 
-const remoteTag = git(
-  ['ls-remote', '--exit-code', '--tags', 'origin', `refs/tags/${tag}`],
-  { allowStatus: [2] },
-)
+const remoteTag = git(['ls-remote', '--exit-code', '--tags', 'origin', `refs/tags/${tag}`], {
+  allowStatus: [2],
+})
 if (remoteTag.status === 0) {
   console.error(`远端已有 tag ${tag}`)
   process.exit(1)
@@ -84,12 +83,18 @@ const synced = spawnSync(process.execPath, [join(root, 'scripts/sync-version.mjs
   cwd: root,
   stdio: 'inherit',
 })
-if ((synced.status ?? 1) !== 0)
-  process.exit(synced.status ?? 1)
+if ((synced.status ?? 1) !== 0) process.exit(synced.status ?? 1)
 
-git(['add', '--', ...versionFiles])
+const notesRel = `docs/releases/v${ver}.md`
+const notesGen = spawnSync(process.execPath, [join(root, 'scripts/gen-release-notes.mjs'), '--write', notesRel], {
+  cwd: root,
+  stdio: 'inherit',
+})
+if ((notesGen.status ?? 1) !== 0) process.exit(notesGen.status ?? 1)
+const notesBody = readFileSync(join(root, notesRel), 'utf8').trim()
+git(['add', '--', ...versionFiles, notesRel])
 git(['commit', '-m', `chore: 版本 bump 至 ${ver}`])
-git(['tag', '-a', tag, '-m', tag])
+git(['tag', '-a', tag, '-m', notesBody || tag])
 git(['push', 'origin', branch])
 git(['push', 'origin', tag])
 

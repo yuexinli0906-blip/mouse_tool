@@ -1,7 +1,9 @@
+import { Buffer } from 'node:buffer'
 // 极简 asar 解包器：asar = [4字节头长度][4字节头长度][4字节JSON长度][JSON头][文件数据...]
 // 只依赖 node 标准库，不用装任何东西。
 import fs from 'node:fs'
 import path from 'node:path'
+import process from 'node:process'
 
 const src = process.argv[2]
 const outDir = process.argv[3]
@@ -62,4 +64,6 @@ function walk(node, relPath) {
 
 walk(header, '')
 fs.closeSync(fd)
+
+// eslint-disable-next-line no-console
 console.log(`完成：写出 ${written} 个文件，跳过 ${skipped} 个 → ${outDir}`)

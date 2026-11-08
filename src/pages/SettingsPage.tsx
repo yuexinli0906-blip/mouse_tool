@@ -1,35 +1,27 @@
 /** 设置页：外观、刷新间隔、关窗是否进托盘、关于。 */
+import type { AutostartDiagnostic } from '@/bindings'
+import type { DeviceCategory } from '@/devices'
 import type { CloseBehavior, ThemeMode } from '@/stores/settings'
 import { Icon } from '@iconify/react'
 import { useNavigate } from '@tanstack/react-router'
-import { invoke } from '@tauri-apps/api/core'
 import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { check } from '@tauri-apps/plugin-updater'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { commands } from '@/bindings'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { APP_VERSION } from '@/lib/app-version'
 import { cn } from '@/lib/utils'
-import {
-  applyThemeFromStore,
-  useSettingsStore,
-} from '@/stores/settings'
+import { DEVICE_CATEGORIES, DEVICE_CATEGORY_LABEL } from '@/plugin-sdk'
+import { applyThemeFromStore, normalizeTrayCategories, useSettingsStore } from '@/stores/settings'
 
 type SectionId = 'appearance' | 'about'
 
-interface AutostartDiagnostic {
-  currentExe: string
-  registryValue: string | null
-  registryExe: string | null
-  pathsMatch: boolean
-  systemEnabled: boolean
-}
-
-const SECTIONS: { id: SectionId, label: string }[] = [
+const SECTIONS: { id: SectionId; label: string }[] = [
   { id: 'appearance', label: '外观' },
   { id: 'about', label: '关于' },
 ]
@@ -39,32 +31,29 @@ export function SettingsPage() {
   const [section, setSection] = useState<SectionId>('appearance')
   const [query, setQuery] = useState('')
 
-  const autoIntervalSec = useSettingsStore(s => s.autoIntervalSec)
-  const themeMode = useSettingsStore(s => s.themeMode)
-  const closeBehavior = useSettingsStore(s => s.closeBehavior)
-  const launchAtLogin = useSettingsStore(s => s.launchAtLogin)
-  const setAutoIntervalSec = useSettingsStore(s => s.setAutoIntervalSec)
-  const setThemeMode = useSettingsStore(s => s.setThemeMode)
-  const setCloseBehavior = useSettingsStore(s => s.setCloseBehavior)
-  const setLaunchAtLogin = useSettingsStore(s => s.setLaunchAtLogin)
-  const reset = useSettingsStore(s => s.reset)
+  const autoIntervalSec = useSettingsStore((s) => s.autoIntervalSec)
+  const themeMode = useSettingsStore((s) => s.themeMode)
+  const closeBehavior = useSettingsStore((s) => s.closeBehavior)
+  const launchAtLogin = useSettingsStore((s) => s.launchAtLogin)
+  const trayCategories = useSettingsStore((s) => s.trayCategories)
+  const setAutoIntervalSec = useSettingsStore((s) => s.setAutoIntervalSec)
+  const setThemeMode = useSettingsStore((s) => s.setThemeMode)
+  const setCloseBehavior = useSettingsStore((s) => s.setCloseBehavior)
+  const setLaunchAtLogin = useSettingsStore((s) => s.setLaunchAtLogin)
+  const setTrayCategories = useSettingsStore((s) => s.setTrayCategories)
+  const reset = useSettingsStore((s) => s.reset)
 
   // 与系统开机自启状态对齐一次
   useEffect(() => {
     void isEnabled()
       .then((on) => {
-        if (on !== useSettingsStore.getState().launchAtLogin)
-          setLaunchAtLogin(on)
+        if (on !== useSettingsStore.getState().launchAtLogin) setLaunchAtLogin(on)
       })
       .catch(() => {})
   }, [setLaunchAtLogin])
 
-  const visibleSections = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (!q)
-      return SECTIONS
-    return SECTIONS.filter(s => s.label.toLowerCase().includes(q))
-  }, [query])
+  const q = query.trim().toLowerCase()
+  const visibleSections = !q ? SECTIONS : SECTIONS.filter((s) => s.label.toLowerCase().includes(q))
 
   const close = () => {
     void navigate({ to: '/' })
@@ -73,7 +62,7 @@ export function SettingsPage() {
   return (
     <div className="bg-background flex min-h-0 flex-1">
       <aside className="bg-card/40 w-42 shrink-0 overflow-auto border-r border-border p-3">
-        {visibleSections.map(s => (
+        {visibleSections.map((s) => (
           <button
             key={s.id}
             type="button"
@@ -98,7 +87,7 @@ export function SettingsPage() {
           />
           <Input
             value={query}
-            onChange={e => setQuery(e.target.value)}
+            onChange={(e) => setQuery(e.target.value)}
             placeholder="搜索设置"
             aria-label="搜索设置"
             className="pl-9"
@@ -106,36 +95,33 @@ export function SettingsPage() {
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
-          {section === 'appearance'
-            ? (
-                <AppearancePanel
-                  autoIntervalSec={autoIntervalSec}
-                  themeMode={themeMode}
-                  closeBehavior={closeBehavior}
-                  launchAtLogin={launchAtLogin}
-                  onAutoIntervalSecChange={setAutoIntervalSec}
-                  onThemeModeChange={(mode) => {
-                    setThemeMode(mode)
-                    applyThemeFromStore(mode)
-                  }}
-                  onCloseBehaviorChange={setCloseBehavior}
-                  onLaunchAtLoginChange={async (on) => {
-                    try {
-                      if (on)
-                        await enable()
-                      else
-                        await disable()
-                      setLaunchAtLogin(on)
-                    }
-                    catch (e) {
-                      console.error('开机自启切换失败', e)
-                    }
-                  }}
-                />
-              )
-            : (
-                <AboutPanel />
-              )}
+          {section === 'appearance' ? (
+            <AppearancePanel
+              autoIntervalSec={autoIntervalSec}
+              trayCategories={trayCategories}
+              themeMode={themeMode}
+              closeBehavior={closeBehavior}
+              launchAtLogin={launchAtLogin}
+              onAutoIntervalSecChange={setAutoIntervalSec}
+              onTrayCategoriesChange={setTrayCategories}
+              onThemeModeChange={(mode) => {
+                setThemeMode(mode)
+                applyThemeFromStore(mode)
+              }}
+              onCloseBehaviorChange={setCloseBehavior}
+              onLaunchAtLoginChange={async (on) => {
+                try {
+                  if (on) await enable()
+                  else await disable()
+                  setLaunchAtLogin(on)
+                } catch (e) {
+                  console.error('开机自启切换失败', e)
+                }
+              }}
+            />
+          ) : (
+            <AboutPanel />
+          )}
         </div>
 
         <Separator />
@@ -148,17 +134,13 @@ export function SettingsPage() {
               void (async () => {
                 try {
                   await disable()
-                }
-                catch {
+                } catch {
                   // ignore
                 }
                 reset()
                 applyThemeFromStore()
                 const next = useSettingsStore.getState()
-                void invoke('set_tray_device', {
-                  deviceId: next.trayDeviceId,
-                  selectedByCategory: next.selectedByCategory,
-                }).catch((e: unknown) => {
+                void commands.setTrayDevice(next.trayDeviceId, next.selectedByCategory).catch((e: unknown) => {
                   console.error('set_tray_device failed', e)
                 })
               })()
@@ -182,38 +164,43 @@ function AppearancePanel({
   themeMode,
   closeBehavior,
   launchAtLogin,
+  trayCategories,
   onAutoIntervalSecChange,
   onThemeModeChange,
   onCloseBehaviorChange,
   onLaunchAtLoginChange,
+  onTrayCategoriesChange,
 }: {
   autoIntervalSec: number
   themeMode: ThemeMode
   closeBehavior: CloseBehavior
   launchAtLogin: boolean
+  trayCategories: DeviceCategory[]
   onAutoIntervalSecChange: (sec: number) => void
   onThemeModeChange: (mode: ThemeMode) => void
   onCloseBehaviorChange: (behavior: CloseBehavior) => void
   onLaunchAtLoginChange: (on: boolean) => void | Promise<void>
+  onTrayCategoriesChange: (cats: DeviceCategory[]) => void
 }) {
   const closeToTray = (closeBehavior ?? 'tray') === 'tray'
   const [autostartDiag, setAutostartDiag] = useState<AutostartDiagnostic | null>(null)
 
-  const loadAutostartDiag = useCallback(async () => {
-    if (import.meta.env.DEV)
-      return
+  async function loadAutostartDiag() {
+    if (import.meta.env.DEV) return
     try {
-      const d = await invoke<AutostartDiagnostic>('get_autostart_diagnostic')
+      const d = await commands.getAutostartDiagnostic()
       setAutostartDiag(d)
-    }
-    catch {
+    } catch {
       setAutostartDiag(null)
     }
-  }, [])
+  }
 
   useEffect(() => {
-    void loadAutostartDiag()
-  }, [loadAutostartDiag, launchAtLogin])
+    // 诊断拉取在 await 之后 setState，避免 effect 体内同步改状态。
+    void (async () => {
+      await loadAutostartDiag()
+    })()
+  }, [launchAtLogin])
 
   return (
     <div className="space-y-6">
@@ -258,13 +245,42 @@ function AppearancePanel({
             value={autoIntervalSec}
             onChange={(e) => {
               const n = Number(e.target.value)
-              if (!Number.isFinite(n))
-                return
+              if (!Number.isFinite(n)) return
               onAutoIntervalSecChange(n)
             }}
           />
           <p className="text-muted-foreground text-xs">
             由 `@tauri-store/zustand` 持久化，主页自动刷新会立刻跟随。
+          </p>
+        </div>
+
+        <div className="flex w-fit min-w-60 flex-1 flex-col gap-2">
+          <span className="text-muted-foreground text-xs">托盘显示分类</span>
+          <div className="flex gap-2">
+            {DEVICE_CATEGORIES.map((cat) => {
+              const checked = trayCategories.includes(cat)
+              return (
+                <label key={cat} className="flex cursor-pointer items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={checked}
+                    onCheckedChange={(value) => {
+                      const on = value === true
+                      const next = on
+                        ? normalizeTrayCategories([...trayCategories, cat])
+                        : normalizeTrayCategories(trayCategories.filter((c) => c !== cat))
+                      // 至少保留一项
+                      if (next.length === 0) return
+                      onTrayCategoriesChange(next)
+                    }}
+                    aria-label={`托盘显示${DEVICE_CATEGORY_LABEL[cat]}`}
+                  />
+                  <span>{DEVICE_CATEGORY_LABEL[cat]}</span>
+                </label>
+              )
+            })}
+          </div>
+          <p className="text-muted-foreground text-xs">
+            勾选后，托盘图标与悬停提示只展示对应分类的电量（可多选）。
           </p>
         </div>
 
@@ -284,36 +300,28 @@ function AppearancePanel({
             勾选后关闭窗口会进托盘；不勾选则直接退出。托盘可打开或退出。
           </p>
 
-          {
-            import.meta.env.DEV
-              ? null
-              : (
-                  <div className="flex w-fit min-w-60 flex-1 flex-col gap-2">
-                    <span className="text-muted-foreground text-xs">开机自启</span>
-                    <label className="flex cursor-pointer items-center gap-2 text-sm">
-                      <Checkbox
-                        checked={launchAtLogin}
-                        onCheckedChange={(checked) => {
-                          void (async () => {
-                            await onLaunchAtLoginChange(checked === true)
-                            await loadAutostartDiag()
-                          })()
-                        }}
-                        aria-label="开机自启"
-                      />
-                      <span>开机时后台启动（不打开窗口）</span>
-                    </label>
-                    <p className="text-muted-foreground text-xs">
-                      勾选后随系统启动，只进托盘；双击托盘图标再打开窗口。
-                    </p>
-                    {autostartDiag
-                      ? (
-                          <AutostartDiagnosticPanel diagnostic={autostartDiag} />
-                        )
-                      : null}
-                  </div>
-                )
-          }
+          {import.meta.env.DEV ? null : (
+            <div className="flex w-fit min-w-60 flex-1 flex-col gap-2">
+              <span className="text-muted-foreground text-xs">开机自启</span>
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <Checkbox
+                  checked={launchAtLogin}
+                  onCheckedChange={(checked) => {
+                    void (async () => {
+                      await onLaunchAtLoginChange(checked === true)
+                      await loadAutostartDiag()
+                    })()
+                  }}
+                  aria-label="开机自启"
+                />
+                <span>开机时后台启动（不打开窗口）</span>
+              </label>
+              <p className="text-muted-foreground text-xs">
+                勾选后随系统启动，只进托盘；双击托盘图标再打开窗口。
+              </p>
+              {autostartDiag ? <AutostartDiagnosticPanel diagnostic={autostartDiag} /> : null}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -336,17 +344,15 @@ function AutostartDiagnosticPanel({ diagnostic }: { diagnostic: AutostartDiagnos
           <dd className="inline">{diagnostic.registryExe ?? '（未写入 Run）'}</dd>
         </div>
       </dl>
-      {mismatch
-        ? (
-            <p className="text-destructive mt-2">
-              路径不一致，开机可能无法启动；请关闭再开启自启，或重启本应用以自动修正。
-            </p>
-          )
-        : (
-            <p className="text-muted-foreground mt-2">
-              {diagnostic.systemEnabled ? '路径一致。' : '系统自启未开启。'}
-            </p>
-          )}
+      {mismatch ? (
+        <p className="text-destructive mt-2">
+          路径不一致，开机可能无法启动；请关闭再开启自启，或重启本应用以自动修正。
+        </p>
+      ) : (
+        <p className="text-muted-foreground mt-2">
+          {diagnostic.systemEnabled ? '路径一致。' : '系统自启未开启。'}
+        </p>
+      )}
     </div>
   )
 }
@@ -369,17 +375,15 @@ function AboutPanel() {
       await update.downloadAndInstall()
       setUpdateMsg('安装完成，即将重启…')
       await relaunch()
-    }
-    catch (e) {
+    } catch (e) {
       setUpdateMsg(`检查失败：${e instanceof Error ? e.message : String(e)}`)
-    }
-    finally {
+    } finally {
       setUpdating(false)
     }
   }
 
   useEffect(() => {
-    void invoke<string>('get_log_path')
+    void commands.getLogPath()
       .then(setLogPath)
       .catch(() => setLogPath(''))
   }, [])
@@ -388,11 +392,7 @@ function AboutPanel() {
     <div className="space-y-3">
       <h2 className="text-lg font-semibold">关于</h2>
       <p className="text-sm">yugutou_tool · 显示雷柏 VT9 AIR 电量</p>
-      <p className="text-muted-foreground text-sm">
-        版本
-        {' '}
-        {APP_VERSION}
-      </p>
+      <p className="text-muted-foreground text-sm">版本 {APP_VERSION}</p>
       <button
         type="button"
         className="text-primary text-sm hover:underline"
@@ -402,18 +402,15 @@ function AboutPanel() {
       </button>
       <div className="space-y-2 pt-2">
         <p className="text-muted-foreground text-xs">运行日志（查开机闪退）</p>
-        <p className="text-muted-foreground break-all font-mono text-xs">
-          {logPath || '读取中…'}
-        </p>
+        <p className="text-muted-foreground break-all font-mono text-xs">{logPath || '读取中…'}</p>
         <Button
           type="button"
           variant="secondary"
           size="sm"
           disabled={!logPath}
           onClick={() => {
-            if (!logPath)
-              return
-            void invoke('open_log_dir').catch((e) => {
+            if (!logPath) return
+            void commands.openLogDir().catch((e) => {
               console.error('open_log_dir failed', e)
             })
           }}
@@ -431,11 +428,7 @@ function AboutPanel() {
           >
             {updating ? '处理中…' : '检查更新'}
           </Button>
-          {updateMsg
-            ? (
-                <p className="text-muted-foreground text-xs">{updateMsg}</p>
-              )
-            : null}
+          {updateMsg ? <p className="text-muted-foreground text-xs">{updateMsg}</p> : null}
         </div>
       </div>
     </div>

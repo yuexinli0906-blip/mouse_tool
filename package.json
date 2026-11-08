@@ -1,7 +1,7 @@
 {
   "name": "yugutou_tool",
   "type": "module",
-  "version": "3.2.1",
+  "version": "3.5.0",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -13,10 +13,12 @@
     "lint:fix": "eslint . --fix",
     "check:card": "node scripts/check-battery-card.cjs",
     "version:sync": "node scripts/sync-version.mjs",
+    "bindings": "cargo test --manifest-path src-tauri/Cargo.toml --lib export_bindings",
     "build:app": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/tauri-build.ps1",
     "tauri:build": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/tauri-build.ps1",
     "release:bump": "node scripts/bump-version.mjs",
-    "update:dep": "taze major -w && cargo update --manifest-path src-tauri/Cargo.toml"
+    "update:dep": "taze major -w && cargo update --manifest-path src-tauri/Cargo.toml",
+    "release:notes": "node scripts/gen-release-notes.mjs"
   },
   "dependencies": {
     "@iconify/react": "^6.0.2",
@@ -37,7 +39,9 @@
   },
   "devDependencies": {
     "@antfu/eslint-config": "^9.5.1",
+    "@babel/core": "^8.0.7",
     "@eslint-react/eslint-plugin": "^5.28.1",
+    "@rolldown/plugin-babel": "^0.2.4",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/router-plugin": "^1.168.47",
     "@tauri-apps/cli": "^2.12.3",
@@ -45,7 +49,9 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "babel-plugin-react-compiler": "^1.0.0",
     "eslint": "^10.13.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.7",
     "tailwindcss": "^4.3.3",
     "taze": "^21.3.0",

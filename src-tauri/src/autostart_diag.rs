@@ -8,7 +8,7 @@ use tauri_plugin_autostart::ManagerExt;
 
 const RUN_REGKEY: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct AutostartDiagnostic {
     pub current_exe: String,
@@ -54,6 +54,7 @@ pub fn log_startup(app: &AppHandle) {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_autostart_diagnostic(app: AppHandle) -> AutostartDiagnostic {
     collect(&app)
 }

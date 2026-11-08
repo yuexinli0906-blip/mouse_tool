@@ -23,5 +23,5 @@ export const deviceRegistry: DeviceAdapter[] = [
 ]
 
 export function getDeviceById(id: string): DeviceAdapter | undefined {
-  return deviceRegistry.find(device => device.id === id)
+  return deviceRegistry.find((device) => device.id === id)
 }

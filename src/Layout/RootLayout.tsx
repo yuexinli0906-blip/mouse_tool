@@ -5,7 +5,7 @@ import { TitleBar } from '@/components/TitleBar'
 import { applyThemeFromStore, useSettingsStore } from '@/stores/settings'
 
 export function RootLayout() {
-  const themeMode = useSettingsStore(s => s.themeMode)
+  const themeMode = useSettingsStore((s) => s.themeMode)
 
   useEffect(() => {
     applyThemeFromStore(themeMode)

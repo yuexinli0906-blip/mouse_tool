@@ -1,5 +1,5 @@
-import { invoke } from '@tauri-apps/api/core'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { commands } from '@/bindings'
 import { cn } from '@/lib/utils'
 
 interface S9SettingsData {
@@ -53,8 +53,8 @@ export function S9Settings() {
     setStatus(change ? '正在写入并读回核对…' : '正在读取设置…')
     try {
       const result = change
-        ? await invoke<unknown>('set_s9_settings', change)
-        : await invoke<unknown>('get_s9_settings')
+        ? await commands.setS9Settings(change.activeStage, change.pollingRate)
+        : await commands.getS9Settings()
       if (!mountedRef.current || current !== generationRef.current)
         return
       if (!isSettings(result))
@@ -84,8 +84,9 @@ export function S9Settings() {
 
   useEffect(() => {
     mountedRef.current = true
-    void request()
+    const timer = window.setTimeout(() => void request(), 0)
     return () => {
+      window.clearTimeout(timer)
       // invoke 无法撤销硬件请求；卸载后仅丢弃结果，防止污染下次挂载。
       mountedRef.current = false
       generationRef.current += 1

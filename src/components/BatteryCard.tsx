@@ -50,54 +50,35 @@ const LEVEL_GLOW: Record<BatteryLevel, string> = {
 }
 
 function levelFromInfo(info: BatteryInfo | null): BatteryLevel {
-  if (!info)
-    return 'unknown'
+  if (!info) return 'unknown'
   // 型号不支持：设备插着、但本版读不了，显示「未连接」会让人以为没插。
-  if (info.unsupported)
-    return 'unsupported'
-  if (!info.connected)
-    return 'empty'
+  if (info.unsupported) return 'unsupported'
+  if (!info.connected) return 'empty'
   // 充电中必须先判：部分设备充电时拿不到百分比（如前行者 S9 Pro 的 0xE4 哨兵值），
   // 若先判 percent == null 会落到「等待数据」，用户会误以为读不到电量。
-  if (info.charging)
-    return 'charging'
-  if (info.percent == null)
-    return 'unknown'
-  if (info.percent <= 15)
-    return 'low'
-  if (info.percent <= 40)
-    return 'mid'
+  if (info.charging) return 'charging'
+  if (info.percent == null) return 'unknown'
+  if (info.percent <= 15) return 'low'
+  if (info.percent <= 40) return 'mid'
   return 'high'
 }
 
 function percentText(info: BatteryInfo | null): string {
-  if (!info || !info.connected || info.percent == null)
-    return '--'
+  if (!info || !info.connected || info.percent == null) return '--'
   return `${Math.max(0, Math.min(100, Math.round(info.percent)))}%`
 }
 
-function statusText(
-  info: BatteryInfo | null,
-  loading: boolean,
-  error: string | null,
-): string {
-  if (error)
-    return '读取失败'
-  if (!info && !error)
-    return loading ? '正在读取…' : '等待读取'
-  if (!info || !info.connected)
-    return '设备未连接'
+function statusText(info: BatteryInfo | null, loading: boolean, error: string | null): string {
+  if (error) return '读取失败'
+  if (!info && !error) return loading ? '正在读取…' : '等待读取'
+  if (!info || !info.connected) return '设备未连接'
   // 型号不受支持：必须直说，不能落到下面「等待电量数据」，
   // 否则用户会去查鼠标开机/重插接收器，而真正原因是这只设备本版不支持。
-  if (info.unsupported)
-    return '该型号暂不支持'
+  if (info.unsupported) return '该型号暂不支持'
   // 充电中要说「充电中」，不能因为拿不到百分比就说「等待电量数据」。
-  if (info.charging)
-    return '充电中'
-  if (info.percent == null)
-    return '等待电量数据'
-  if (info.percent <= 15)
-    return '电量偏低'
+  if (info.charging) return '充电中'
+  if (info.percent == null) return '等待电量数据'
+  if (info.percent <= 15) return '电量偏低'
   return '运行正常'
 }
 
@@ -107,12 +88,9 @@ function hintText(
   error: string | null,
   auto: boolean,
 ): string {
-  if (error)
-    return '请检查设备连接后重试。'
-  if (!info && !error)
-    return loading ? '正在从设备读取 HID 数据。' : '准备读取设备状态。'
-  if (!info || !info.connected)
-    return '未检测到接收器或设备，请检查连接后重试。'
+  if (error) return '请检查设备连接后重试。'
+  if (!info && !error) return loading ? '正在从设备读取 HID 数据。' : '准备读取设备状态。'
+  if (!info || !info.connected) return '未检测到接收器或设备，请检查连接后重试。'
   // 型号不支持时，原因写在 detail 里（后端给出具体型号），直接显示给用户看。
   if (info.unsupported) {
     return info.detail || '检测到的设备型号不在本版支持范围内。'
@@ -123,10 +101,8 @@ function hintText(
       ? '正在充电。该设备充电时不上报百分比，充满或拔线后会自动更新。'
       : '正在充电，充满后会自动更新。'
   }
-  if (info.percent == null)
-    return '接收器已连接，等待鼠标唤醒。动一下鼠标或重新插拔接收器。'
-  if (info.percent <= 15)
-    return '建议尽快充电。'
+  if (info.percent == null) return '接收器已连接，等待鼠标唤醒。动一下鼠标或重新插拔接收器。'
+  if (info.percent <= 15) return '建议尽快充电。'
   return auto ? '自动刷新已开启，电量会按间隔更新。' : '自动刷新已暂停，可随时手动刷新。'
 }
 
@@ -139,14 +115,12 @@ function hintText(
  * 返回 null 表示不需要显示。
  */
 function modelUncertainText(info: BatteryInfo | null): string | null {
-  if (!info || !info.connected || !info.model_uncertain)
-    return null
+  if (!info || !info.connected || !info.model_uncertain) return null
   return '型号按 S9 系列处理'
 }
 
 function formatClock(value: Date | null): string {
-  if (!value)
-    return '—'
+  if (!value) return '—'
   return value.toLocaleTimeString('zh-CN', {
     hour: '2-digit',
     minute: '2-digit',
@@ -177,15 +151,20 @@ function BatteryGauge({
   const percent = text.endsWith('%') ? Number.parseInt(text, 10) : null
   const ratio = percent == null || Number.isNaN(percent) ? 0 : percent / 100
   const fill = level !== 'empty'
+  // 等待数据用虚线环：周期必须整除周长，否则 12 点接缝会缺一截。
+  const unknownDash = (() => {
+    const on = 3
+    const off = 10
+    const period = on + off
+    const count = Math.max(1, Math.round(circumference / period))
+    const fitted = circumference / count
+    return `${fitted * (on / period)} ${fitted * (off / period)}`
+  })()
 
   return (
     <div className="relative mx-auto flex size-[208px] items-center justify-center">
       <div className={cn('absolute inset-8 rounded-full blur-2xl', LEVEL_GLOW[level])} />
-      <svg
-        viewBox={`0 0 ${size} ${size}`}
-        className="relative size-full -rotate-90"
-        aria-hidden
-      >
+      <svg viewBox={`0 0 ${size} ${size}`} className="relative size-full -rotate-90" aria-hidden>
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -193,7 +172,10 @@ function BatteryGauge({
           fill="none"
           stroke="currentColor"
           strokeWidth={stroke}
-          className="text-border/60"
+          className={cn(
+            'text-border/60',
+            (level === 'unknown' || level === 'empty') && 'text-border',
+          )}
         />
         {fill && (
           <circle
@@ -203,12 +185,12 @@ function BatteryGauge({
             fill="none"
             stroke="currentColor"
             strokeWidth={stroke}
-            strokeLinecap="round"
+            strokeLinecap={level === 'unknown' ? 'butt' : 'round'}
             className={cn(
               LEVEL_STROKE[level],
               'transition-[stroke-dashoffset,stroke] duration-700 ease-out',
             )}
-            strokeDasharray={level === 'unknown' ? '3 10' : circumference}
+            strokeDasharray={level === 'unknown' ? unknownDash : circumference}
             strokeDashoffset={level === 'unknown' ? 0 : circumference * (1 - ratio)}
           />
         )}
@@ -235,7 +217,7 @@ function BatteryGauge({
   )
 }
 
-function Stat({ label, value }: { label: string, value: string }) {
+function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 px-4 py-3">
       <p className="text-muted-foreground text-[10px] font-medium tracking-[0.16em] uppercase">
@@ -261,16 +243,8 @@ export function BatteryCard({
   const level = levelFromInfo(info)
   const connected = Boolean(info?.connected)
   const charging = Boolean(info?.charging)
-  const connectionText = !info && !error
-    ? '检测中'
-    : connected
-      ? '已连接'
-      : '未连接'
-  const chargingText = info?.charging == null
-    ? '—'
-    : info.charging
-      ? '充电中'
-      : '未充电'
+  const connectionText = !info && !error ? '检测中' : connected ? '已连接' : '未连接'
+  const chargingText = info?.charging == null ? '—' : info.charging ? '充电中' : '未充电'
 
   return (
     <section className="border-border/70 bg-card/80 relative w-full overflow-hidden rounded-[28px] border shadow-[0_24px_80px_-48px_rgba(0,0,0,0.55)] backdrop-blur-sm">
@@ -281,9 +255,7 @@ export function BatteryCard({
             <p className="text-muted-foreground text-[10px] font-medium tracking-[0.2em] uppercase">
               当前设备
             </p>
-            <h1 className="mt-1.5 truncate text-2xl font-semibold tracking-tight">
-              {deviceName}
-            </h1>
+            <h1 className="mt-1.5 truncate text-2xl font-semibold tracking-tight">{deviceName}</h1>
             <div className="mt-2.5 flex flex-wrap items-center gap-2">
               <span
                 className={cn(
@@ -353,10 +325,7 @@ export function BatteryCard({
                 disabled={loading}
                 className="rounded-full px-4"
               >
-                <Icon
-                  icon="mdi:refresh"
-                  className={cn('size-4', loading && 'animate-spin')}
-                />
+                <Icon icon="mdi:refresh" className={cn('size-4', loading && 'animate-spin')} />
                 {loading ? '读取中…' : '立即刷新'}
               </Button>
               <Button
